@@ -4,7 +4,7 @@ require 'getoptlong'
 
 def usage
   puts <<USAGE
-Usage: poc [--help|-h] [--target|-t base_branch_1] [--target|-t base_branch_2] ... [--base-fork|-b base_user/base_repo] [--head-remote|-e head_remote] [[--prefix|-p topic_branch] [--from-commits|-c COMMITS]] [[--from-pull-request|-f https://url.to/pull/id]]
+Usage: cppr [--help|-h] [--target|-t base_branch_1] [--target|-t base_branch_2] ... [--base-fork|-b base_user/base_repo] [--head-remote|-e head_remote] [[--prefix|-p topic_branch] [--from-commits|-c COMMITS]] [[--from-pull-request|-f https://url.to/pull/id]]
 USAGE
   exit 255
 end
