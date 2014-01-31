@@ -1,7 +1,7 @@
 #!/bin/sh
 
-. git-sh-setup
-. git-sh-i18n
+. /usr/libexec/git-core/git-sh-setup
+. /usr/libexec/git-core/git-sh-i18n
 
 
 state_dir=$GIT_DIR/cppr_state
@@ -62,10 +62,11 @@ To check out the original branch and stop creating pull requests, run "cppr2 --a
 get_fork () {
     fork=$(git config --get remote.${1}.pushurl ||
            git config --get remote.${1}.url | 
-               awk -F':' '{sub(/\.git$/, "", $2); print $2;}')
-    if -z "$fork"; then
+               awk '{gsub(/(^.+github.com.|\.git$)/, "", $1); print $1;}')
+    if test -z "$fork"; then
         die $(gettext "Could not resolve fork for remote ${1}")
     fi
+    echo $fork
 }
 
 resolve_forks () {
@@ -128,11 +129,25 @@ do
             prefix=$2
             shift
             ;;
+	    --continue|--skip|--abort)
+		    test $total_argc -eq 2 || usage
+		    action=${1##--}
+		    ;;
+        [^-]*)
+            break
+            ;;
     esac
     shift
 done
 test $# -ge 1 || usage
 commits="$@"
+
+test -n "$target_branches" &&
+test -n "$my_remote" &&
+test -n "$our_remote" &&
+test -n "$prefix" || usage
+
+resolve_forks
 
 # read_state
 # no state
@@ -142,6 +157,10 @@ if ! test -d $state_dir ; then
     mkdir -p "$state_dir"
 fi
 
+for target in $target_branches; do
+    echo $target >> $state_dir/remaining_targets
+done
+
 while ( test -f $state_dir/remaining_targets ) ; do
     topic_target=$(head --lines=1 $state_dir/remaining_targets)
     # Move topic_target from remaining_targets:
@@ -149,34 +168,30 @@ while ( test -f $state_dir/remaining_targets ) ; do
     sed --in-place --expression='1d' $state_dir/remaining_targets
     temp_branch=$prefix-$topic_target
     git checkout -b $temp_branch $topic_target
-    git cherry-pick $commits
-    rv=$?
-    if test '0' != '1' ; then
-        die $resolvemsg
-        #  This is a reentry point (--continue)
-    else
-        rm $state_dir/topic_target
-        echo $topic_target >> $state_dir/complete_targets
-    fi
+    git cherry-pick $commits || die $resolvemsg
+    #  This is a reentry point (--continue)
+    rm $state_dir/topic_target
+    echo $topic_target >> $state_dir/complete_targets
     test -z "$(cat $state_dir/remaining_targets)" && /bin/rm $state_dir/remaining_targets
 done
 while ( test -f $state_dir/complete_targets ) ; do
     # MAKE PRs
     pull_target=$(head --lines=1 $state_dir/complete_targets)
-    Move pull_target from complete_targets:
+    # Move pull_target from complete_targets:
     echo $pull_target > $state_dir/pull_target
     sed --in-place --expression='1d' $state_dir/complete_targets
     pulling_branch=$prefix-$pull_target
+    git checkout $pulling_branch || die $resolvemsg
+    #  This is a reentry point (--continue)
     echo $pulling_branch > $state_dir/pulling_branch
-    if ! git push $my_remote $pulling_branch ; then
-        die $resolvemsg
-        #  This is a reentry point (--continue)
-    fi
+    git push $my_remote $pulling_branch || die $resolvemsg
+    #  This is a reentry point (--continue)
     echo $pulling_branch > $state_dir/pulling_branch_pushed
     pr_message="cppr: ${prefix} - Pull request from ${commits}"
-    if ! hub pull-request -m $pr_message -b "${our_remote}:${pull_target}" -h "${my_remote}:${pulling_branch}" ; then
+    if ! hub pull-request -m "${pr_message}" -b "${our_fork}:${pull_target}" -h "${my_fork}:${pulling_branch}" ; then
        die $resolvemsg
        #  This is a reentry point (--continue)
     fi
     echo $pulling_branch >> $state_dir/pulled_branches
+    test -z "$(cat $state_dir/complete_targets)" && /bin/rm $state_dir/complete_targets
 done
