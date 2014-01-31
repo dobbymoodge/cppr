@@ -23,6 +23,9 @@ state_dir=$GIT_DIR/cppr_state
 # $state_dir/commits
 #: origin-server/feature_branch
 
+
+target_branches=
+
 # prefix for naming topic branch(es)
 prefix=
 # name of remote to push topic branch(es) onto
@@ -65,24 +68,79 @@ get_fork () {
     fi
 }
 
+resolve_forks () {
+    my_fork=$(get_fork $my_remote)
+    our_fork=$(get_fork $our_remote)
+}
+
 read_state () {
     test -f "$state_dir/prefix" &&
+    prefix=$(cat $state_dir/prefix) &&
     test -f "$state_dir/my_remote" &&
+    my_remote=$(cat $state_dir/my_remote) &&
     test -f "$state_dir/our_remote" &&
-    test -f "$state_dir/commits"
-
-    prefix=$(cat $state_dir/prefix)
-    my_remote=$(cat $state_dir/my_remote)
-    my_fork=$(get_fork $my_remote)
-    our_remote=$(cat $state_dir/our_remote)
-    our_fork=$(get_fork $our_remote)
+    our_remote=$(cat $state_dir/our_remote) &&
+    test -f "$state_dir/commits" &&
     commits=$(cat $state_dir/commits)
+
+    test -f "$state_dir/complete_targets" &&
+    complete_targets=t
+
+    test -f "$state_dir/topic_target" &&
+    topic_target=$(cat $state_dir/topic_target)
+
+    test -f "$state_dir/pulling_branch" &&
+    pulling_branch=$(cat $state_dir/pulling_branch)
+
+    test -f "$state_dir/pulling_branch_pushed" &&
+    pulling_branch_pushed=t
+
+    test -f "$state_dir/pulled_branches" &&
+    pulled_branches=t
+
+    test -f "$state_dir/pull_target" &&
+    pull_target=$(cat $state_dir/pull_target)
 }
+
+total_argc=$#
+while test $# != 0
+do
+	case "$1" in
+        --target_branch|-t)
+            test 2 -le "$#" || usage
+            test -n "${target_branches}" &&
+            target_branches="${target_branches} ${2}" ||
+            target_branches="${2}"
+            shift
+            ;;
+        --my_remote|-u)
+            test -z "${my_remote}" && test 2 -le "$#" || usage
+            my_remote=$2
+            shift
+            ;;
+        --our_remote|-o)
+            test -z "${our_remote}" && test 2 -le "$#" || usage
+            our_remote=$2
+            shift
+            ;;
+        --prefix|-p)
+            test -z "${prefix}" && test 2 -le "$#" || usage
+            prefix=$2
+            shift
+            ;;
+    esac
+    shift
+done
+test $# -ge 1 || usage
+commits="$@"
 
 # read_state
 # no state
 # write_state
-
+if ! test -d $state_dir ; then
+    # unless continue/abort/etc.
+    mkdir -p "$state_dir"
+fi
 
 while ( test -f $state_dir/remaining_targets ) ; do
     topic_target=$(head --lines=1 $state_dir/remaining_targets)
