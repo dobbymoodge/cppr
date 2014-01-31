@@ -1,0 +1,124 @@
+#!/bin/sh
+
+. git-sh-setup
+. git-sh-i18n
+
+
+state_dir=$GIT_DIR/cppr_state
+#$state_dir/remaining_targets
+#: ose1
+#: ose2
+#NOT: $state_dir/complete_targets
+#NOT: $state_dir/topic_target
+#NOT: $state_dir/pulling_branch
+#NOT: $state_dir/pulling_branch_pushed
+#NOT: $state_dir/pulled_branches
+#NOT: $state_dir/pull_target
+# $state_dir/my_remote
+# #: jolamb
+# $state_dir/our_remote
+# #: enterprise
+# $state_dir/prefix
+# #: bugfix
+# $state_dir/commits
+#: origin-server/feature_branch
+
+# prefix for naming topic branch(es)
+prefix=
+# name of remote to push topic branch(es) onto
+my_remote=
+# git fork for my_remote (derived)
+my_fork=
+# name of remote to stage PR against
+our_remote=
+# git fork for our_remote (derived)
+our_fork=
+# List of commits to build PR from
+commits=
+# File with list of target branches for which topic branch has been created
+complete_targets=
+# File with name of target branch currently being used for topic branch creation
+topic_target=
+# File with name of current topic branch, when creating pull request
+pulling_branch=
+# File with list of topic branches which have successfully been pushed to $my_remote
+pulling_branch_pushed=
+# File with list of topic branches which have successfully been turned into pull requests
+pulled_branches=
+# Current target branch for which a pull request is being created
+pull_target=
+
+
+
+resolvemsg="
+$(gettext 'When you have resolved this problem, run "cppr2 --continue".
+If you prefer to skip this target branch, run "cppr2 --skip" instead.
+To check out the original branch and stop creating pull requests, run "cppr2 --abort".')
+"
+
+get_fork () {
+    fork=$(git config --get remote.${1}.pushurl ||
+           git config --get remote.${1}.url | 
+               awk -F':' '{sub(/\.git$/, "", $2); print $2;}')
+    if -z "$fork"; then
+        die $(gettext "Could not resolve fork for remote ${1}")
+    fi
+}
+
+read_state () {
+    test -f "$state_dir/prefix" &&
+    test -f "$state_dir/my_remote" &&
+    test -f "$state_dir/our_remote" &&
+    test -f "$state_dir/commits"
+
+    prefix=$(cat $state_dir/prefix)
+    my_remote=$(cat $state_dir/my_remote)
+    my_fork=$(get_fork $my_remote)
+    our_remote=$(cat $state_dir/our_remote)
+    our_fork=$(get_fork $our_remote)
+    commits=$(cat $state_dir/commits)
+}
+
+# read_state
+# no state
+# write_state
+
+
+while ( test -f $state_dir/remaining_targets ) ; do
+    topic_target=$(head --lines=1 $state_dir/remaining_targets)
+    # Move topic_target from remaining_targets:
+    echo $topic_target > $state_dir/topic_target
+    sed --in-place --expression='1d' $state_dir/remaining_targets
+    temp_branch=$prefix-$topic_target
+    git checkout -b $temp_branch $topic_target
+    git cherry-pick $commits
+    rv=$?
+    if test '0' != '1' ; then
+        die $resolvemsg
+        #  This is a reentry point (--continue)
+    else
+        rm $state_dir/topic_target
+        echo $topic_target >> $state_dir/complete_targets
+    fi
+    test -z "$(cat $state_dir/remaining_targets)" && /bin/rm $state_dir/remaining_targets
+done
+while ( test -f $state_dir/complete_targets ) ; do
+    # MAKE PRs
+    pull_target=$(head --lines=1 $state_dir/complete_targets)
+    Move pull_target from complete_targets:
+    echo $pull_target > $state_dir/pull_target
+    sed --in-place --expression='1d' $state_dir/complete_targets
+    pulling_branch=$prefix-$pull_target
+    echo $pulling_branch > $state_dir/pulling_branch
+    if ! git push $my_remote $pulling_branch ; then
+        die $resolvemsg
+        #  This is a reentry point (--continue)
+    fi
+    echo $pulling_branch > $state_dir/pulling_branch_pushed
+    pr_message="cppr: ${prefix} - Pull request from ${commits}"
+    if ! hub pull-request -m $pr_message -b "${our_remote}:${pull_target}" -h "${my_remote}:${pulling_branch}" ; then
+       die $resolvemsg
+       #  This is a reentry point (--continue)
+    fi
+    echo $pulling_branch >> $state_dir/pulled_branches
+done
