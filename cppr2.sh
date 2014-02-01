@@ -166,11 +166,14 @@ while ( test -f $state_dir/remaining_targets ) ; do
     # Move topic_target from remaining_targets:
     echo $topic_target > $state_dir/topic_target
     sed --in-place --expression='1d' $state_dir/remaining_targets
+    # Verify no temp branches collide with existing branches at start
     temp_branch=$prefix-$topic_target
-    git checkout -b $temp_branch $topic_target
+    git checkout -b $temp_branch $topic_target # Handle failure
     git cherry-pick $commits || die $resolvemsg
-    #  This is a reentry point (--continue)
-    rm $state_dir/topic_target
+    # This is a reentry point (--continue)
+    #   remaining_targets
+    #   topic_target
+    /bin/rm $state_dir/topic_target
     echo $topic_target >> $state_dir/complete_targets
     test -z "$(cat $state_dir/remaining_targets)" && /bin/rm $state_dir/remaining_targets
 done
@@ -182,16 +185,28 @@ while ( test -f $state_dir/complete_targets ) ; do
     sed --in-place --expression='1d' $state_dir/complete_targets
     pulling_branch=$prefix-$pull_target
     git checkout $pulling_branch || die $resolvemsg
-    #  This is a reentry point (--continue)
+    # This is a reentry point (--continue)
+    #   complete_targets
+    #   pull_target
+    #   
     echo $pulling_branch > $state_dir/pulling_branch
     git push $my_remote $pulling_branch || die $resolvemsg
-    #  This is a reentry point (--continue)
+    # This is a reentry point (--continue)
+    #   complete_targets
+    #   pull_target
+    #   pulling_branch
     echo $pulling_branch > $state_dir/pulling_branch_pushed
     pr_message="cppr: ${prefix} - Pull request from ${commits}"
     if ! hub pull-request -m "${pr_message}" -b "${our_fork}:${pull_target}" -h "${my_fork}:${pulling_branch}" ; then
        die $resolvemsg
-       #  This is a reentry point (--continue)
+       # This is a reentry point (--continue)
+       #   complete_targets
+       #   pull_target
+       #   pulling_branch
+       #   pulling_branch_pushed
     fi
     echo $pulling_branch >> $state_dir/pulled_branches
+    /bin/rm $state_dir/pulling_branch
+    /bin/rm $state_dir/pulling_branch_pushed
     test -z "$(cat $state_dir/complete_targets)" && /bin/rm $state_dir/complete_targets
 done
