@@ -23,7 +23,7 @@ state_dir=$GIT_DIR/cppr_state
 # $state_dir/commits
 #: origin-server/feature_branch
 
-
+editmsg_file=$GIT_DIR/PULLREQ_EDITMSG
 target_branches=
 
 # prefix for naming topic branch(es)
@@ -152,6 +152,26 @@ resolve_forks
 # read_state
 # no state
 # write_state
+
+conflicting_branches=
+for target in $target_branches; do
+    chk_target="${prefix}-${target}"
+    if git branch --no-color | cut -b3- | grep -q "^${chk_target}$" ; then
+        test -n "$conflicting_branches" &&
+        conflicting_branches="${conflicting_branches} ${chk_target}" ||
+        conflicting_branches="${chk_target}"
+    fi
+done
+
+# Check if our temp branches already exist
+if ! test -d $state_dir && test -n "$conflicting_branches" ; then
+    echo "$(gettext 'The following branches conflict with the branch names generated using the prefix you provided; please remove the existing branches or select a different prefix: ')"
+    for br in $conflicting_branches ; do
+        echo "    ${br}"
+    done
+    exit 1
+fi
+
 if ! test -d $state_dir ; then
     # unless continue/abort/etc.
     mkdir -p "$state_dir"
@@ -197,7 +217,9 @@ while ( test -f $state_dir/complete_targets ) ; do
     #   pulling_branch
     echo $pulling_branch > $state_dir/pulling_branch_pushed
     pr_message="cppr: ${prefix} - Pull request from ${commits}"
-    if ! hub pull-request -m "${pr_message}" -b "${our_fork}:${pull_target}" -h "${my_fork}:${pulling_branch}" ; then
+    echo "$pr_message" > $editmsg_file
+    # if ! hub pull-request -m "${pr_message}" -b "${our_fork}:${pull_target}" -h "${my_fork}:${pulling_branch}" ; then
+    if ! hub pull-request -b "${our_fork}:${pull_target}" -h "${my_fork}:${pulling_branch}" ; then
        die $resolvemsg
        # This is a reentry point (--continue)
        #   complete_targets
