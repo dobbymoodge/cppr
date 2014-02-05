@@ -63,7 +63,8 @@ get_fork () {
     fork=$(git config --get remote.${1}.pushurl ||
            git config --get remote.${1}.url | 
                awk '{gsub(/(^.+github.com.|\.git$)/, "", $1); print $1;}')
-    if test -z "$fork"; then
+    if test -z "$fork"
+    then
         die $(gettext "Could not resolve fork for remote ${1}")
     fi
     echo $fork
@@ -154,9 +155,11 @@ resolve_forks
 # write_state
 
 conflicting_branches=
-for target in $target_branches; do
+for target in $target_branches
+do
     chk_target="${prefix}-${target}"
-    if git branch --no-color | cut -b3- | grep -q "^${chk_target}$" ; then
+    if git branch --no-color | cut -b3- | grep -q "^${chk_target}$"
+    then
         test -n "$conflicting_branches" &&
         conflicting_branches="${conflicting_branches} ${chk_target}" ||
         conflicting_branches="${chk_target}"
@@ -164,71 +167,155 @@ for target in $target_branches; do
 done
 
 # Check if our temp branches already exist
-if ! test -d $state_dir && test -n "$conflicting_branches" ; then
+if ! test -d $state_dir && test -n "$conflicting_branches"
+then
     echo "$(gettext 'The following branches conflict with the branch names generated using the prefix you provided; please remove the existing branches or select a different prefix: ')"
-    for br in $conflicting_branches ; do
+    for br in $conflicting_branches
+    do
         echo "    ${br}"
     done
     exit 1
 fi
 
-if ! test -d $state_dir ; then
+if ! test -d $state_dir
+then
     # unless continue/abort/etc.
     mkdir -p "$state_dir"
 fi
 
-for target in $target_branches; do
+for target in $target_branches
+do
     echo $target >> $state_dir/remaining_targets
 done
 
+# TODO: replace the 2 while loops with state machine callouts, like
+# while XYZ ; do branch_states ; done
+
+bare_state () {
+    test -f $state_dir/remaining_targets &&
+    ! test -f $state_dir/topic_target
+}
+
+checkout_state () {
+    test -f $state_dir/remaining_targets &&
+    test -f $state_dir/topic_target &&
+    ! test "$(git rev-parse --abbrev-ref HEAD)" = "${temp_branch}"
+}
+
+cherry_pick_state () {
+    test -f $state_dir/remaining_targets &&
+    test -f $state_dir/topic_target &&
+    test "$(git rev-parse --abbrev-ref HEAD)" = "${temp_branch}"
+}
+
 while ( test -f $state_dir/remaining_targets ) ; do
-    topic_target=$(head --lines=1 $state_dir/remaining_targets)
-    # Move topic_target from remaining_targets:
-    echo $topic_target > $state_dir/topic_target
-    sed --in-place --expression='1d' $state_dir/remaining_targets
-    # Verify no temp branches collide with existing branches at start
+    if bare_state
+    then
+        topic_target=$(head --lines=1 $state_dir/remaining_targets)
+        # Move topic_target from remaining_targets:
+        echo $topic_target > $state_dir/topic_target
+        sed --in-place --expression='1d' $state_dir/remaining_targets
+    else
+        topic_target=$(cat $state_dir/topic_target)
+    fi
     temp_branch=$prefix-$topic_target
-    git checkout -b $temp_branch $topic_target # Handle failure
-    git cherry-pick $commits || die $resolvemsg
-    # This is a reentry point (--continue)
-    #   remaining_targets
-    #   topic_target
-    /bin/rm $state_dir/topic_target
-    echo $topic_target >> $state_dir/complete_targets
-    test -z "$(cat $state_dir/remaining_targets)" && /bin/rm $state_dir/remaining_targets
+
+    if checkout_state
+    then
+        git checkout -b $temp_branch $topic_target || die $resolvemsg
+        # This is a reentry point (--continue)
+        #   ! ( git branch | grep -q "^\s*${temp_branch}$" )
+        #   remaining_targets
+        #   topic_target
+    fi
+    
+    if cherry_pick_state
+    then
+        git cherry-pick $commits || die $resolvemsg
+        # This is a reentry point (--continue)
+        #   ( git branch | grep -q "^\s*${temp_branch}$" )
+        #   remaining_targets
+        #   topic_target
+        /bin/rm $state_dir/topic_target
+        echo $topic_target >> $state_dir/complete_targets
+        test -z "$(cat $state_dir/remaining_targets)" && /bin/rm $state_dir/remaining_targets
+    fi
 done
+
+pull_target_state () {
+    test -f $state_dir/complete_targets &&
+    ! test -f $state_dir/pull_target
+}
+
+checkout_pulling_branch_state () {
+    test -f $state_dir/complete_targets &&
+    test -f $state_dir/pull_target &&
+    ! test -f $state_dir/pulling_branch
+}
+
+push_state () {
+    test -f $state_dir/complete_targets &&
+    test -f $state_dir/pull_target &&
+    test -f $state_dir/pulling_branch &&
+    ! test -f $state_dir/pulling_branch_pushed
+}
+
+pull_request_state () {
+    test -f $state_dir/complete_targets &&
+    test -f $state_dir/pull_target &&
+    test -f $state_dir/pulling_branch &&
+    test -f $state_dir/pulling_branch_pushed &&
+    test -f $state_dir/pulled_branches && grep -qv "^${pulling_branch}$"
+}
+
 while ( test -f $state_dir/complete_targets ) ; do
     # MAKE PRs
-    pull_target=$(head --lines=1 $state_dir/complete_targets)
-    # Move pull_target from complete_targets:
-    echo $pull_target > $state_dir/pull_target
-    sed --in-place --expression='1d' $state_dir/complete_targets
+    if pull_target_state
+    then
+        pull_target=$(head --lines=1 $state_dir/complete_targets)
+        # Move pull_target from complete_targets:
+        echo $pull_target > $state_dir/pull_target
+        sed --in-place --expression='1d' $state_dir/complete_targets
+    else
+        pull_target=$(cat $state_dir/pull_target)
+    fi
     pulling_branch=$prefix-$pull_target
-    git checkout $pulling_branch || die $resolvemsg
-    # This is a reentry point (--continue)
-    #   complete_targets
-    #   pull_target
-    #   
-    echo $pulling_branch > $state_dir/pulling_branch
-    git push $my_remote $pulling_branch || die $resolvemsg
+
+    if checkout_pulling_branch_state
+    then
+        git checkout $pulling_branch || die $resolvemsg
+        # This is a reentry point (--continue)
+        #   complete_targets
+        #   pull_target
+        #
+        echo $pulling_branch > $state_dir/pulling_branch
+    fi
+
+    if push_state
+    then
+    git push $my_remote $pulling_branch:$pulling_branch || die $resolvemsg
     # This is a reentry point (--continue)
     #   complete_targets
     #   pull_target
     #   pulling_branch
     echo $pulling_branch > $state_dir/pulling_branch_pushed
-    pr_message="cppr: ${prefix} - Pull request from ${commits}"
-    echo "$pr_message" > $editmsg_file
-    # if ! hub pull-request -m "${pr_message}" -b "${our_fork}:${pull_target}" -h "${my_fork}:${pulling_branch}" ; then
-    if ! hub pull-request -b "${our_fork}:${pull_target}" -h "${my_fork}:${pulling_branch}" ; then
-       die $resolvemsg
-       # This is a reentry point (--continue)
-       #   complete_targets
-       #   pull_target
-       #   pulling_branch
-       #   pulling_branch_pushed
     fi
-    echo $pulling_branch >> $state_dir/pulled_branches
-    /bin/rm $state_dir/pulling_branch
-    /bin/rm $state_dir/pulling_branch_pushed
-    test -z "$(cat $state_dir/complete_targets)" && /bin/rm $state_dir/complete_targets
+
+    if pull_request_state
+    then
+        pr_message="cppr: ${prefix} - Pull request from ${commits}"
+        echo "$pr_message" > $editmsg_file
+        # if ! hub pull-request -m "${pr_message}" -b "${our_fork}:${pull_target}" -h "${my_fork}:${pulling_branch}" ; then
+        hub pull-request -b "${our_fork}:${pull_target}" -h "${my_fork}:${pulling_branch}" || die $resolvemsg
+        # This is a reentry point (--continue)
+        #   complete_targets
+        #   pull_target
+        #   pulling_branch
+        #   pulling_branch_pushed
+        echo $pulling_branch >> $state_dir/pulled_branches
+        /bin/rm $state_dir/pulling_branch
+        /bin/rm $state_dir/pulling_branch_pushed
+        /bin/rm $state_dir/pull_target
+        test -z "$(cat $state_dir/complete_targets)" && /bin/rm $state_dir/complete_targets
+    fi
 done
