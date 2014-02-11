@@ -148,6 +148,10 @@ test -n "$my_remote" &&
 test -n "$our_remote" &&
 test -n "$prefix" || usage
 
+# if test -z "$action" && state_exists; then
+#   echo "cppr already in progress, please use one of --continue, --skip, or --abort"
+# fi
+
 resolve_forks
 
 # read_state
@@ -264,8 +268,8 @@ pull_request_state () {
     test -f $state_dir/complete_targets &&
     test -f $state_dir/pull_target &&
     test -f $state_dir/pulling_branch &&
-    test -f $state_dir/pulling_branch_pushed &&
-    test -f $state_dir/pulled_branches && grep -qv "^${pulling_branch}$"
+    test -f $state_dir/pulling_branch_pushed # &&
+#    test -f $state_dir/pulled_branches && grep -qv "^${pulling_branch}$"
 }
 
 while ( test -f $state_dir/complete_targets ) ; do
