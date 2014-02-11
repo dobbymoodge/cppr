@@ -1,28 +1,29 @@
 #!/bin/sh
 
+SUBDIRECTORY_OK=Yes
+OPTIONS_KEEPDASHDASH=
+OPTIONS_SPEC="\
+cppr --target_branch <branch> [--target_branch <another branch> ...] --my_remote <remote> --our_remote <remote> --prefix <temp branch prefix> <commit(s)>
+cppr --continue | --abort | --skip
+--
+ Available options are
+t,target_branch=!   branch to create pull request against
+u,my_remote=!       remote to push topic branches to, from which pull requests will be made
+o,our_remote=!      remote against which pull requests will be created
+p,prefix=!          prefix to use when creating topic branches
+ Actions:
+continue!          continue
+abort!             abort and check out the original branch
+skip!              skip current cherry-pick or pull request and continue
+"
+
 . /usr/libexec/git-core/git-sh-setup
 . /usr/libexec/git-core/git-sh-i18n
-
+set_reflog_action cppr
+require_work_tree_exists
+cd_to_toplevel
 
 state_dir=$GIT_DIR/cppr_state
-#$state_dir/remaining_targets
-#: ose1
-#: ose2
-#NOT: $state_dir/complete_targets
-#NOT: $state_dir/topic_target
-#NOT: $state_dir/pulling_branch
-#NOT: $state_dir/pulling_branch_pushed
-#NOT: $state_dir/pulled_branches
-#NOT: $state_dir/pull_target
-# $state_dir/my_remote
-# #: jolamb
-# $state_dir/our_remote
-# #: enterprise
-# $state_dir/prefix
-# #: bugfix
-# $state_dir/commits
-#: origin-server/feature_branch
-
 editmsg_file=$GIT_DIR/PULLREQ_EDITMSG
 target_branches=
 
@@ -75,34 +76,81 @@ resolve_forks () {
     our_fork=$(get_fork $our_remote)
 }
 
-read_state () {
-    test -f "$state_dir/prefix" &&
-    prefix=$(cat $state_dir/prefix) &&
-    test -f "$state_dir/my_remote" &&
-    my_remote=$(cat $state_dir/my_remote) &&
-    test -f "$state_dir/our_remote" &&
-    our_remote=$(cat $state_dir/our_remote) &&
-    test -f "$state_dir/commits" &&
-    commits=$(cat $state_dir/commits)
-
-    test -f "$state_dir/complete_targets" &&
-    complete_targets=t
-
-    test -f "$state_dir/topic_target" &&
-    topic_target=$(cat $state_dir/topic_target)
-
-    test -f "$state_dir/pulling_branch" &&
-    pulling_branch=$(cat $state_dir/pulling_branch)
-
-    test -f "$state_dir/pulling_branch_pushed" &&
-    pulling_branch_pushed=t
-
-    test -f "$state_dir/pulled_branches" &&
-    pulled_branches=t
-
-    test -f "$state_dir/pull_target" &&
-    pull_target=$(cat $state_dir/pull_target)
+write_state () {
+    echo "$target_branches" > $state_dir/opt_target_branches
+    echo "$my_remote" > $state_dir/opt_my_remote
+    echo "$our_remote" > $state_dir/opt_our_remote
+    echo "$my_fork" > $state_dir/opt_my_fork
+    echo "$our_fork" > $state_dir/opt_our_fork
+    echo "$prefix" > $state_dir/opt_prefix
+    echo "$commits" > $state_dir/opt_commits
+    echo "$current_branch" > $state_dir/current_branch
 }
+
+initialize_cppr () {
+    resolve_forks
+
+    conflicting_branches=
+    for target in $target_branches
+    do
+        chk_target="${prefix}-${target}"
+        if git branch --no-color | cut -b3- | grep -q "^${chk_target}$"
+        then
+            test -n "$conflicting_branches" &&
+            conflicting_branches="${conflicting_branches} ${chk_target}" ||
+            conflicting_branches="${chk_target}"
+        fi
+    done
+
+    # Check if our temp branches already exist
+    if ! test -d $state_dir && test -n "$conflicting_branches"
+    then
+        echo "$(gettext 'The following branches conflict with the branch names generated using the prefix you provided; please remove the existing branches or select a different prefix: ')"
+        for br in $conflicting_branches
+        do
+            echo "    ${br}"
+        done
+        exit 1
+    fi
+
+    if ! test -d $state_dir
+    then
+        # unless continue/abort/etc.
+        mkdir -p "$state_dir"
+    fi
+
+    current_branch="$(git rev-parse --abbrev-ref HEAD)"
+
+    write_state
+
+    for target in $target_branches
+    do
+        echo $target >> $state_dir/remaining_targets
+    done
+}
+
+read_state () {
+    test -f $state_dir/opt_target_branches &&
+    target_branches="$(cat $state_dir/opt_target_branches)" &&
+    test -f $state_dir/opt_my_remote &&
+    my_remote="$(cat $state_dir/opt_my_remote)" &&
+    test -f $state_dir/opt_our_remote &&
+    our_remote="$(cat $state_dir/opt_our_remote)" &&
+    test -f $state_dir/opt_my_fork &&
+    my_fork="$(cat $state_dir/opt_my_fork)" &&
+    test -f $state_dir/opt_our_fork &&
+    our_fork="$(cat $state_dir/opt_our_fork)" &&
+    test -f $state_dir/opt_prefix &&
+    prefix="$(cat $state_dir/opt_prefix)" &&
+    test -f $state_dir/opt_commits &&
+    commits="$(cat $state_dir/opt_commits)" &&
+    test -f $state_dir/current_branch &&
+    current_branch="$(cat $state_dir/current_branch)"
+}
+
+echo "========="
+echo "Args: $@"
+echo "========="
 
 total_argc=$#
 while test $# != 0
@@ -140,60 +188,74 @@ do
     esac
     shift
 done
-test $# -ge 1 || usage
-commits="$@"
 
-test -n "$target_branches" &&
-test -n "$my_remote" &&
-test -n "$our_remote" &&
-test -n "$prefix" || usage
-
-# if test -z "$action" && state_exists; then
-#   echo "cppr already in progress, please use one of --continue, --skip, or --abort"
-# fi
-
-resolve_forks
-
-# read_state
-# no state
-# write_state
-
-conflicting_branches=
-for target in $target_branches
-do
-    chk_target="${prefix}-${target}"
-    if git branch --no-color | cut -b3- | grep -q "^${chk_target}$"
+if test -z "$action"
+then
+    if test -d $state_dir
     then
-        test -n "$conflicting_branches" &&
-        conflicting_branches="${conflicting_branches} ${chk_target}" ||
-        conflicting_branches="${chk_target}"
+        # Stolen haphazardly from git-rebase.sh
+        state_dir_base=${state_dir##*/}
+	    cmd_live_cppr="cppr (--continue | --abort | --skip)"
+	    cmd_clear_stale_cppr="rm -fr \"$state_dir\""
+        die "
+$(eval_gettext 'It seems that there is already a $state_dir_base directory, and
+I wonder if you are in the middle of another cppr run. If that is the case, please try
+	$cmd_live_cppr
+If that is not the case, please
+	$cmd_clear_stale_cppr
+and run me again.  I am stopping in case you still have something
+valuable there.')"
+    else
+        test -n "$target_branches" &&
+        test -n "$my_remote" &&
+        test -n "$our_remote" &&
+        test -n "$prefix" || usage
     fi
-done
-
-# Check if our temp branches already exist
-if ! test -d $state_dir && test -n "$conflicting_branches"
+    test $# -ge "1" || usage
+    commits="$@"
+    initialize_cppr
+elif test -n "$action"
 then
-    echo "$(gettext 'The following branches conflict with the branch names generated using the prefix you provided; please remove the existing branches or select a different prefix: ')"
-    for br in $conflicting_branches
-    do
-        echo "    ${br}"
-    done
-    exit 1
+    if ! test -d $state_dir
+    then
+        die "$(gettext 'No cppr run in progress?')"
+    elif test -n "${target_branches}${my_remote}${our_remote}${prefix}${commits}"
+    then
+        die "$(eval_gettext '$action cannot be used with other arguments')"
+    fi
+    test $# -eq "0" || usage
 fi
 
-if ! test -d $state_dir
-then
-    # unless continue/abort/etc.
-    mkdir -p "$state_dir"
-fi
-
-for target in $target_branches
-do
-    echo $target >> $state_dir/remaining_targets
-done
-
-# TODO: replace the 2 while loops with state machine callouts, like
-# while XYZ ; do branch_states ; done
+case "$action" in
+    continue)
+        # Again stolen from git-rebase.sh
+        # Sanity check
+	    git rev-parse --verify HEAD >/dev/null ||
+		die "$(gettext 'Cannot read HEAD')"
+	    git update-index --ignore-submodules --refresh &&
+	    git diff-files --quiet --ignore-submodules || {
+		    echo "$(gettext "You must edit all merge conflicts and then
+mark them as resolved using git add")"
+		    exit 1
+	    }
+        test -f "${GIT_DIR}/CHERRY_PICK_HEAD" &&
+        die "$(gettext 'Resolved cherry-picks must be committed using git commit')"
+        read_state || die "
+$(eval_gettext 'Could not read cppr state from $state_dir. Please verify
+permissions on the directory and try again')"
+        ;;
+    abort)
+        # TODO: abort_cppr
+        read_state
+        test -n "$current_branch" && git checkout "$current_branch"
+        exit 0
+        ;;
+    skip)
+        # TODO: skip_branch
+        echo "NOT IMPLEMENTED"
+        exit 0
+        ;;
+esac
 
 bare_state () {
     test -f $state_dir/remaining_targets &&
@@ -235,12 +297,25 @@ while ( test -f $state_dir/remaining_targets ) ; do
     
     if cherry_pick_state
     then
-        git cherry-pick $commits || die $resolvemsg
+        if test -f $state_dir/pre_cp_ref
+        then
+            pre_cp_ref="$(cat $state_dir/pre_cp_ref)"
+        else
+            pre_cp_ref="$(git rev-parse HEAD)"
+            echo "$pre_cp_ref" > $state_dir/pre_cp_ref
+            git cherry-pick $commits || die $resolvemsg
+        fi
+        test "$pre_cp_ref" = "$(git rev-parse HEAD)" &&
+        die "
+$(gettext 'It looks like the cherry-pick failed, and the branch
+is unmodified. Please fix this issue and resume with --continue
+or skip this branch with --skip')"
         # This is a reentry point (--continue)
         #   ( git branch | grep -q "^\s*${temp_branch}$" )
         #   remaining_targets
         #   topic_target
         /bin/rm $state_dir/topic_target
+        /bin/rm $state_dir/pre_cp_ref
         echo $topic_target >> $state_dir/complete_targets
         test -z "$(cat $state_dir/remaining_targets)" && /bin/rm $state_dir/remaining_targets
     fi
@@ -268,8 +343,7 @@ pull_request_state () {
     test -f $state_dir/complete_targets &&
     test -f $state_dir/pull_target &&
     test -f $state_dir/pulling_branch &&
-    test -f $state_dir/pulling_branch_pushed # &&
-#    test -f $state_dir/pulled_branches && grep -qv "^${pulling_branch}$"
+    test -f $state_dir/pulling_branch_pushed
 }
 
 while ( test -f $state_dir/complete_targets ) ; do
@@ -323,3 +397,10 @@ while ( test -f $state_dir/complete_targets ) ; do
         test -z "$(cat $state_dir/complete_targets)" && /bin/rm $state_dir/complete_targets
     fi
 done
+
+if ! test -f $state_dir/complete_targets && ! test -f $state_dir/remaining_targets
+then
+    git checkout "$current_branch"
+    /bin/rm $state_dir/*
+    /usr/bin/rmdir $state_dir
+fi
