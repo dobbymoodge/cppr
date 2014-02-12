@@ -91,26 +91,48 @@ initialize_cppr () {
     resolve_forks
 
     conflicting_branches=
+    conflicting_remote_branches=
     for target in $target_branches
     do
         chk_target="${prefix}-${target}"
-        if git branch --no-color | cut -b3- | grep -q "^${chk_target}$"
+        # if git branch --no-color | cut -b3- | grep -q "^${chk_target}$"
+        if git rev-parse --verify --quiet "$chk_target" > /dev/null
         then
             test -n "$conflicting_branches" &&
             conflicting_branches="${conflicting_branches} ${chk_target}" ||
             conflicting_branches="${chk_target}"
         fi
+        chk_target="${my_remote}/${prefix}-${target}"
+        if git rev-parse --verify --quiet "$chk_target" > /dev/null
+        then
+            test -n "$conflicting_remote_branches" &&
+            conflicting_remote_branches="${conflicting_remote_branches} ${chk_target}" ||
+            conflicting_remote_branches="${chk_target}"
+        fi
     done
 
     # Check if our temp branches already exist
-    if ! test -d $state_dir && test -n "$conflicting_branches"
+    if ! test -d $state_dir
     then
-        echo "$(gettext 'The following branches conflict with the branch names generated using the prefix you provided; please remove the existing branches or select a different prefix: ')"
-        for br in $conflicting_branches
-        do
-            echo "    ${br}"
-        done
-        exit 1
+        if test -n "$conflicting_branches"
+        then
+            echo "$(gettext 'The following local branches conflict with the branch names generated using the prefix you provided; please remove the existing branches or select a different prefix: ')"
+            for br in $conflicting_branches
+            do
+                echo "    ${br}"
+            done
+            test -z "$conflicting_remote_branches" && exit 1
+        fi
+
+        if test -n "$conflicting_remote_branches"
+        then
+            echo "$(gettext 'The following remote branches conflict with the branch names generated using the prefix you provided; please remove the existing branches or select a different prefix: ')"
+            for br in $conflicting_remote_branches
+            do
+                echo "    ${br}"
+            done
+            exit 1
+        fi
     fi
 
     if ! test -d $state_dir
@@ -148,9 +170,44 @@ read_state () {
     current_branch="$(cat $state_dir/current_branch)"
 }
 
-echo "========="
-echo "Args: $@"
-echo "========="
+abort_cppr () {
+    test -d $state_dir || die "$(gettext 'No cppr operation is in progress')"
+    read_state
+    if test -f "${GIT_DIR}/CHERRY_PICK_HEAD"
+    then
+        git cherry-pick --abort
+    fi
+    if test -z "$current_branch" || git rev-parse --verify --quiet "$current_branch" > /dev/null
+    then
+        git rev-parse --verify --quiet "master" > /dev/null && current_branch="master"
+    fi
+
+    test -n "$current_branch" && git checkout "$current_branch"
+
+    if test -n "$prefix" && test -f $state_dir/complete_targets
+    then
+        test -f $state_dir/topic_target && topic_target="$(cat $state_dir/topic_target)"
+        for branch in $(cat $state_dir/complete_targets) $topic_target
+        do
+            temp_branch="${prefix}-${branch}"
+            git rev-parse --verify --quiet "$temp_branch" > /dev/null &&
+            git branch -D "$temp_branch"
+        done
+    fi
+    test -f $state_dir/pulling_branch && pulling_branch="$(cat $state_dir/pulling_branch)"
+    test -f $state_dir/from_pr && from_pr="$(cat $state_dir/from_pr)"
+    for branch in $pulling_branch $from_pr
+    do
+        git rev-parse --verify --quiet "$branch" > /dev/null &&
+        git branch -D "$branch"
+    done
+    /bin/rm -rf $state_dir
+}
+
+
+# echo "========="
+# echo "Args: $@"
+# echo "========="
 
 total_argc=$#
 while test $# != 0
@@ -245,9 +302,7 @@ $(eval_gettext 'Could not read cppr state from $state_dir. Please verify
 permissions on the directory and try again')"
         ;;
     abort)
-        # TODO: abort_cppr
-        read_state
-        test -n "$current_branch" && git checkout "$current_branch"
+        abort_cppr
         exit 0
         ;;
     skip)
