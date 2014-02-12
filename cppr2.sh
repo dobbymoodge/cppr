@@ -170,6 +170,34 @@ read_state () {
     current_branch="$(cat $state_dir/current_branch)"
 }
 
+switch_to_safe_branch () {
+    local safe_branch=
+    if test -z "$current_branch" || git rev-parse --verify --quiet "$current_branch" > /dev/null
+    then
+        git rev-parse --verify --quiet "master" > /dev/null && safe_branch="master"
+    else
+        safe_branch="$current_branch"
+    fi
+
+    test -n "$safe_branch" && git checkout "$safe_branch"
+}
+
+remove_target_branch () {
+    test -z "$1" && return
+    local new_target_branches=
+    for branch in $target_branches
+    do
+        if test "$1" != "$branch"
+        then
+            test -n "${new_target_branches}" &&
+            new_target_branches="${new_target_branches} ${branch}" ||
+            new_target_branches="${branch}"
+        fi
+    done
+    target_branches="$new_target_branches"
+    write_state
+}
+
 abort_cppr () {
     test -d $state_dir || die "$(gettext 'No cppr operation is in progress')"
     read_state
@@ -177,12 +205,8 @@ abort_cppr () {
     then
         git cherry-pick --abort
     fi
-    if test -z "$current_branch" || git rev-parse --verify --quiet "$current_branch" > /dev/null
-    then
-        git rev-parse --verify --quiet "master" > /dev/null && current_branch="master"
-    fi
 
-    test -n "$current_branch" && git checkout "$current_branch"
+    switch_to_safe_branch
 
     if test -n "$prefix" && test -f $state_dir/complete_targets
     then
@@ -204,6 +228,65 @@ abort_cppr () {
     /bin/rm -rf $state_dir
 }
 
+skip_remaining_targets () {
+    test -f $state_dir/topic_target && topic_target="$(cat $state_dir/topic_target)" || return
+    test -n "${topic_target}" && temp_branch="${prefix}-${topic_target}"
+    if test "$(git rev-parse --abbrev-ref HEAD)" = "${temp_branch}"
+    then
+        test -f "${GIT_DIR}/CHERRY_PICK_HEAD" && git cherry-pick --abort
+    fi
+    switch_to_safe_branch
+    if git rev-parse --verify --quiet "$temp_branch" > /dev/null
+    then
+        git branch -D "$temp_branch"
+    fi
+    remove_target_branch "$topic_target"
+    /bin/rm $state_dir/topic_target
+    test -f $state_dir/pre_cp_ref && /bin/rm $state_dir/pre_cp_ref
+}
+
+cleanup_complete_targets () {
+    echo $pulling_branch >> $state_dir/pulled_branches
+    test -f $state_dir/pulling_branch && /bin/rm $state_dir/pulling_branch
+    test -f $state_dir/pulling_branch_pushed && /bin/rm $state_dir/pulling_branch_pushed
+    test -f $state_dir/pull_target && /bin/rm $state_dir/pull_target
+    test -z "$(cat $state_dir/complete_targets)" && /bin/rm $state_dir/complete_targets
+}
+
+skip_complete_targets () {
+    test -f $state_dir/pull_target && pull_target="$(cat $state_dir/pull_target)" || return
+    if test -f $state_dir/pulling_branch
+    then
+        pulling_branch="$(cat $state_dir/pulling_branch)"
+    else
+        test -n "${pull_target}" && pulling_branch="${prefix}-${pull_target}"
+    fi
+    switch_to_safe_branch
+    if ! test -f $state_dir/pulled_branches || ! grep -q "^${pulling_branch}$" $state_dir/pulled_branches
+    then
+        git rev-parse --verify --quiet "$pulling_branch" > /dev/null &&
+        git branch -D "$pulling_branch"
+        if test -f $state_dir/pulling_branch_pushed 
+        then
+            git rev-parse --verify --quiet "${my_remote}/${pulling_branch}" > /dev/null &&
+            git push "$my_remote" ":${pulling_branch}"
+        fi
+    fi
+    cleanup_complete_targets
+}
+
+skip_branch () {
+    test -d $state_dir || die "$(gettext 'No cppr operation is in progress')"
+    read_state
+    if test -f $state_dir/remaining_targets
+    then
+        skip_remaining_targets
+    elif test -f $state_dir/complete_targets
+    then
+        skip_complete_targets
+    fi
+
+}
 
 # echo "========="
 # echo "Args: $@"
@@ -306,9 +389,7 @@ permissions on the directory and try again')"
         exit 0
         ;;
     skip)
-        # TODO: skip_branch
-        echo "NOT IMPLEMENTED"
-        exit 0
+        skip_branch
         ;;
 esac
 
@@ -337,7 +418,7 @@ while ( test -f $state_dir/remaining_targets ) ; do
         echo $topic_target > $state_dir/topic_target
         sed --in-place --expression='1d' $state_dir/remaining_targets
     else
-        topic_target=$(cat $state_dir/topic_target)
+        topic_target="$(cat $state_dir/topic_target)"
     fi
     temp_branch=$prefix-$topic_target
 
@@ -410,18 +491,20 @@ while ( test -f $state_dir/complete_targets ) ; do
         echo $pull_target > $state_dir/pull_target
         sed --in-place --expression='1d' $state_dir/complete_targets
     else
-        pull_target=$(cat $state_dir/pull_target)
+        pull_target="$(cat $state_dir/pull_target)"
     fi
-    pulling_branch=$prefix-$pull_target
 
     if checkout_pulling_branch_state
     then
+        pulling_branch="${prefix}-${pull_target}"
         git checkout $pulling_branch || die $resolvemsg
         # This is a reentry point (--continue)
         #   complete_targets
         #   pull_target
         #
         echo $pulling_branch > $state_dir/pulling_branch
+    else
+        pulling_branch="$(cat $state_dir/pulling_branch)"
     fi
 
     if push_state
