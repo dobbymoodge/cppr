@@ -450,6 +450,7 @@ or skip this branch with --skip')"
         #   ( git branch | grep -q "^\s*${temp_branch}$" )
         #   remaining_targets
         #   topic_target
+        git log "${pre_cp_ref}"..HEAD > "${state_dir}/pr_msg_${temp_branch}"
         /bin/rm $state_dir/topic_target
         /bin/rm $state_dir/pre_cp_ref
         echo $topic_target >> $state_dir/complete_targets
@@ -521,6 +522,11 @@ while ( test -f $state_dir/complete_targets ) ; do
     then
         pr_message="cppr: ${prefix} - Pull request from ${commits}"
         echo "$pr_message" > $editmsg_file
+        if test -f "${state_dir}/pr_msg_${pulling_branch}"
+        then
+            echo "" >> $editmsg_file
+            cat "${state_dir}/pr_msg_${pulling_branch}" >> $editmsg_file
+        fi
         # if ! hub pull-request -m "${pr_message}" -b "${our_fork}:${pull_target}" -h "${my_fork}:${pulling_branch}" ; then
         hub pull-request -b "${our_fork}:${pull_target}" -h "${my_fork}:${pulling_branch}" || die $resolvemsg
         # This is a reentry point (--continue)
@@ -532,6 +538,7 @@ while ( test -f $state_dir/complete_targets ) ; do
         /bin/rm $state_dir/pulling_branch
         /bin/rm $state_dir/pulling_branch_pushed
         /bin/rm $state_dir/pull_target
+        test -f "${state_dir}/pr_msg_${pulling_branch}" && /bin/rm "${state_dir}/pr_msg_${pulling_branch}"
         test -z "$(cat $state_dir/complete_targets)" && /bin/rm $state_dir/complete_targets
     fi
 done
