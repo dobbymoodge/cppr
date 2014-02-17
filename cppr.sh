@@ -17,10 +17,6 @@ abort!			   abort and check out the original branch
 skip!			   skip current cherry-pick or pull request and continue
 "
 
-LONG_USAGE="\
-This is a test
-"
-
 . /usr/libexec/git-core/git-sh-setup
 . /usr/libexec/git-core/git-sh-i18n
 set_reflog_action cppr
