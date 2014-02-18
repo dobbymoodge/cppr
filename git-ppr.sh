@@ -1,45 +1,42 @@
 #!/bin/sh
+# -*- indent-tabs-mode: t -*-
 
 SUBDIRECTORY_OK=Yes
 OPTIONS_KEEPDASHDASH=
 OPTIONS_SPEC="\
-cppr --target_branch <branch> [--target_branch <another branch> ...] --my_remote <remote> --our_remote <remote> --prefix <temp branch prefix> <commit(s)>
-cppr --continue | --abort | --skip
+git ppr --target_branch <destination branch or source branch:destination branch> [--target_branch <another branch/mapping> ...] --my_repo <remote/github repo> --our_repo <remote/github repo> [--prefix <temp branch prefix>]
+git-ppr --continue | --abort | --skip
 --
  Available options are
-t,target_branch=!	branch to create pull request against
-u,my_remote=!		remote to push topic branches to, from which pull requests will be made
-o,our_remote=!		remote against which pull requests will be created
-p,prefix=!			prefix to use when creating topic branches
+t,target_branch=!   branch to create pull request against
+u,my_repo=!         remote or github repository from which pull requests will be made
+o,our_repo=!        remote or github repository (e.g. owner/repo) against which pull requests will be created
+p,prefix=!          prefix to use when mapping topic branches to target branches
  Actions:
-continue!		   continue
-abort!			   abort and check out the original branch
-skip!			   skip current cherry-pick or pull request and continue
+continue!          continue
+abort!             abort and check out the original branch
+skip!              skip current cherry-pick or pull request and continue
 "
 
-LONG_USAGE="\
-This is a test
-"
-
-. /usr/libexec/git-core/git-sh-setup
-. /usr/libexec/git-core/git-sh-i18n
-set_reflog_action cppr
+. git-sh-setup
+. git-sh-i18n
+set_reflog_action ppr
 require_work_tree_exists
 cd_to_toplevel
 
-state_dir=$GIT_DIR/cppr_state
+state_dir=$GIT_DIR/ppr_state
 editmsg_file=$GIT_DIR/PULLREQ_EDITMSG
 target_branches=
 
 # prefix for naming topic branch(es)
 prefix=
 # name of remote to push topic branch(es) onto
-my_remote=
-# git fork for my_remote (derived)
+my_repo=
+# git fork for my_repo (derived)
 my_fork=
 # name of remote to stage PR against
-our_remote=
-# git fork for our_remote (derived)
+our_repo=
+# git fork for our_repo (derived)
 our_fork=
 # List of commits to build PR from
 commits=
@@ -49,41 +46,74 @@ complete_targets=
 topic_target=
 # File with name of current topic branch, when creating pull request
 pulling_branch=
-# File with list of topic branches which have successfully been pushed to $my_remote
+# File with list of topic branches which have successfully been pushed to $my_repo
 pulling_branch_pushed=
 # File with list of topic branches which have successfully been turned into pull requests
 pulled_branches=
 # Current target branch for which a pull request is being created
 pull_target=
 
-
+github_credentials=
 
 resolvemsg="
-$(gettext 'When you have resolved this problem, run "cppr2 --continue".
-If you prefer to skip this target branch, run "cppr2 --skip" instead.
-To check out the original branch and stop creating pull requests, run "cppr2 --abort".')
+$(gettext 'When you have resolved this problem, run "ppr --continue".
+If you prefer to skip this target branch, run "ppr --skip" instead.
+To check out the original branch and stop creating pull requests, run "ppr --abort".')
 "
 
-get_fork () {
-	fork=$(git config --get remote.${1}.pushurl ||
-		   git config --get remote.${1}.url |
-			   awk '{gsub(/(^.+github.com.|\.git$)/, "", $1); print $1;}')
-	if test -z "$fork"
+require_hub () {
+	req_msg="
+$(gettext 'This command requires a recent version of 
+hub, which can be found at: http://hub.github.com/')"
+	unalias hub
+	type hub || die $req_msg
+	hub --version | grep -q '^git version' || die "$req_msg"
+}
+
+resolve_github_credentials () {
+	test -n "$github_credentials" && return 0
+	user_pass=
+	no_creds_msg="
+$(gettext 'This command requires github account credentials to be
+specified either in the hub command configuration located in
+$HOME/.config/hub, or in the environment variables
+GITHUB_USER and GITHUB_PASSWORD.')"
+	test -n "$GITHUB_USER" && test -n "$GITHUB_PASSWORD" && user_pass="${GITHUB_USER}:${GITHUB_PASSWORD}"
+	if test -z "$user_pass" && test -f "${HOME}/.config/hub"
 	then
-		die $(gettext "Could not resolve fork for remote ${1}")
+		oauth_line="$(grep -A2 '^github.com:' ${HOME}/.config/hub | grep '^\s*oauth_token:')"
+		user_pass="${oauth_line#*:}"
 	fi
-	echo $fork
+	test -z "$user_pass" && die "$no_creds_msg"
+	github_credentials="$user_pass"
+}
+
+get_fork () {
+	resolved_fork=
+	push_url=$(git config --get remote.${1}.pushurl ||
+			   git config --get remote.${1}.url)
+	if test -z "$push_url"
+	then
+		test "200" = "$(curl --user ${github_credentials} --silent --output /dev/null --write-out '%{http_code}' https://api.github.com/repos/${1})" &&
+		resolved_fork="${1}"
+	else
+		resolved_fork=$(git config --get remote.${1}.pushurl ||
+						git config --get remote.${1}.url |
+							awk '{gsub(/(^.+github.com.|\.git$)/, "", $1); print $1;}')
+	fi
+	test -z "$resolved_fork" && die "$(gettext 'Could not resolve fork for remote ${1}')"
+	echo $resolved_fork
 }
 
 resolve_forks () {
-	my_fork=$(get_fork $my_remote)
-	our_fork=$(get_fork $our_remote)
+	my_fork=$(get_fork $my_repo)
+	our_fork=$(get_fork $our_repo)
 }
 
 write_state () {
 	echo "$target_branches" > $state_dir/opt_target_branches
-	echo "$my_remote" > $state_dir/opt_my_remote
-	echo "$our_remote" > $state_dir/opt_our_remote
+	echo "$my_repo" > $state_dir/opt_my_repo
+	echo "$our_repo" > $state_dir/opt_our_repo
 	echo "$my_fork" > $state_dir/opt_my_fork
 	echo "$our_fork" > $state_dir/opt_our_fork
 	echo "$prefix" > $state_dir/opt_prefix
@@ -91,53 +121,49 @@ write_state () {
 	echo "$current_branch" > $state_dir/current_branch
 }
 
-initialize_cppr () {
-	resolve_forks
+source_branch () {
+	echo "${1%:*}"
+}
 
-	conflicting_branches=
-	conflicting_remote_branches=
-	for target in $target_branches
+dest_branch () {
+	echo "${1#$(source_branch ${1}):}"
+}
+
+resolve_target_branches () {
+	resolved_target_branches=
+	prefix_req_msg="
+$(gettext 'If --target_branch is used without a destination
+ branch mapping, --prefix must be specified.')"
+	for branch in $target_branches
 	do
-		chk_target="${prefix}-${target}"
-		# if git branch --no-color | cut -b3- | grep -q "^${chk_target}$"
-		if git rev-parse --verify --quiet "$chk_target" > /dev/null
+		if test "$branch" = "$(source_branch ${branch})"
 		then
-			test -n "$conflicting_branches" &&
-			conflicting_branches="${conflicting_branches} ${chk_target}" ||
-			conflicting_branches="${chk_target}"
+			test -z "$prefix" && die $prefix_req_msg
+			branch="${prefix}-${branch}:${branch}"
 		fi
-		chk_target="${my_remote}/${prefix}-${target}"
-		if git rev-parse --verify --quiet "$chk_target" > /dev/null
-		then
-			test -n "$conflicting_remote_branches" &&
-			conflicting_remote_branches="${conflicting_remote_branches} ${chk_target}" ||
-			conflicting_remote_branches="${chk_target}"
-		fi
+		test -n "${resolved_target_branches}" &&
+		resolved_target_branches="${resolved_target_branches} ${branch}" ||
+		resolved_target_branches="${branch}"
 	done
+	target_branches="$resolved_target_branches"
+}
 
-	# Check if our temp branches already exist
-	if ! test -d $state_dir
-	then
-		if test -n "$conflicting_branches"
-		then
-			echo "$(gettext 'The following local branches conflict with the branch names generated using the prefix you provided; please remove the existing branches or select a different prefix: ')"
-			for br in $conflicting_branches
-			do
-				echo "	  ${br}"
-			done
-			test -z "$conflicting_remote_branches" && exit 1
-		fi
+verify_branches () {
+	for branch in $target_branches
+	do
+		src_branch="$(source_branch ${branch})"
+		dst_branch="$(dest_branch ${branch})"
+		test "200" = "$(curl --user ${github_credentials} --silent --output /dev/null --write-out '%{http_code}' https://api.github.com/repos/${my_fork}/branches/${src_branch})" ||
+		die "$(eval_gettext 'This branch could not be verified: ${my_fork}:${src_branch}')"
+		test "200" = "$(curl --user ${github_credentials} --silent --output /dev/null --write-out '%{http_code}' https://api.github.com/repos/${our_fork}/branches/${dst_branch})" ||
+		die "$(eval_gettext 'This branch could not be verified: ${our_fork}:${dst_branch}')"
+	done
+}
 
-		if test -n "$conflicting_remote_branches"
-		then
-			echo "$(gettext 'The following remote branches conflict with the branch names generated using the prefix you provided; please remove the existing branches or select a different prefix: ')"
-			for br in $conflicting_remote_branches
-			do
-				echo "	  ${br}"
-			done
-			exit 1
-		fi
-	fi
+initialize_ppr () {
+	resolve_forks
+	resolve_target_branches
+	verify_branches
 
 	if ! test -d $state_dir
 	then
@@ -158,10 +184,10 @@ initialize_cppr () {
 read_state () {
 	test -f $state_dir/opt_target_branches &&
 	target_branches="$(cat $state_dir/opt_target_branches)" &&
-	test -f $state_dir/opt_my_remote &&
-	my_remote="$(cat $state_dir/opt_my_remote)" &&
-	test -f $state_dir/opt_our_remote &&
-	our_remote="$(cat $state_dir/opt_our_remote)" &&
+	test -f $state_dir/opt_my_repo &&
+	my_repo="$(cat $state_dir/opt_my_repo)" &&
+	test -f $state_dir/opt_our_repo &&
+	our_repo="$(cat $state_dir/opt_our_repo)" &&
 	test -f $state_dir/opt_my_fork &&
 	my_fork="$(cat $state_dir/opt_my_fork)" &&
 	test -f $state_dir/opt_our_fork &&
@@ -202,8 +228,8 @@ remove_target_branch () {
 	write_state
 }
 
-abort_cppr () {
-	test -d $state_dir || die "$(gettext 'No cppr operation is in progress')"
+abort_ppr () {
+	test -d $state_dir || die "$(gettext 'No ppr operation is in progress')"
 	read_state
 	if test -f "${GIT_DIR}/CHERRY_PICK_HEAD"
 	then
@@ -272,15 +298,15 @@ skip_complete_targets () {
 		git branch -D "$pulling_branch"
 		if test -f $state_dir/pulling_branch_pushed
 		then
-			git rev-parse --verify --quiet "${my_remote}/${pulling_branch}" > /dev/null &&
-			git push "$my_remote" ":${pulling_branch}"
+			git rev-parse --verify --quiet "${my_repo}/${pulling_branch}" > /dev/null &&
+			git push "$my_repo" ":${pulling_branch}"
 		fi
 	fi
 	cleanup_complete_targets
 }
 
 skip_branch () {
-	test -d $state_dir || die "$(gettext 'No cppr operation is in progress')"
+	test -d $state_dir || die "$(gettext 'No ppr operation is in progress')"
 	read_state
 	if test -f $state_dir/remaining_targets
 	then
@@ -307,14 +333,14 @@ do
 			target_branches="${2}"
 			shift
 			;;
-		--my_remote|-u)
-			test -z "${my_remote}" && test 2 -le "$#" || usage
-			my_remote=$2
+		--my_repo|-u)
+			test -z "${my_repo}" && test 2 -le "$#" || usage
+			my_repo=$2
 			shift
 			;;
-		--our_remote|-o)
-			test -z "${our_remote}" && test 2 -le "$#" || usage
-			our_remote=$2
+		--our_repo|-o)
+			test -z "${our_repo}" && test 2 -le "$#" || usage
+			our_repo=$2
 			shift
 			;;
 		--prefix|-p)
@@ -333,37 +359,38 @@ do
 	shift
 done
 
+require_hub
+resolve_github_credentials
+
 if test -z "$action"
 then
 	if test -d $state_dir
 	then
 		# Stolen haphazardly from git-rebase.sh
 		state_dir_base=${state_dir##*/}
-		cmd_live_cppr="cppr (--continue | --abort | --skip)"
-		cmd_clear_stale_cppr="rm -fr \"$state_dir\""
+		cmd_live_ppr="ppr (--continue | --abort | --skip)"
+		cmd_clear_stale_ppr="rm -fr \"$state_dir\""
 		die "
 $(eval_gettext 'It seems that there is already a $state_dir_base directory, and
-I wonder if you are in the middle of another cppr run. If that is the case, please try
-	$cmd_live_cppr
+I wonder if you are in the middle of another ppr run. If that is the case, please try
+	$cmd_live_ppr
 If that is not the case, please
-	$cmd_clear_stale_cppr
+	$cmd_clear_stale_ppr
 and run me again.  I am stopping in case you still have something
 valuable there.')"
 	else
 		test -n "$target_branches" &&
-		test -n "$my_remote" &&
-		test -n "$our_remote" &&
-		test -n "$prefix" || usage
+		test -n "$my_repo" &&
+		test -n "$our_repo" || usage
 	fi
-	test $# -ge "1" || usage
-	commits="$@"
-	initialize_cppr
+	test $# -eq "0" || usage
+	initialize_ppr
 elif test -n "$action"
 then
 	if ! test -d $state_dir
 	then
-		die "$(gettext 'No cppr run in progress?')"
-	elif test -n "${target_branches}${my_remote}${our_remote}${prefix}${commits}"
+		die "$(gettext 'No ppr run in progress?')"
+	elif test -n "${target_branches}${my_repo}${our_repo}${prefix}${commits}"
 	then
 		die "$(eval_gettext '$action cannot be used with other arguments')"
 	fi
@@ -385,11 +412,11 @@ mark them as resolved using git add")"
 		test -f "${GIT_DIR}/CHERRY_PICK_HEAD" &&
 		die "$(gettext 'Resolved cherry-picks must be committed using git commit')"
 		read_state || die "
-$(eval_gettext 'Could not read cppr state from $state_dir. Please verify
+$(eval_gettext 'Could not read ppr state from $state_dir. Please verify
 permissions on the directory and try again')"
 		;;
 	abort)
-		abort_cppr
+		abort_ppr
 		exit 0
 		;;
 	skip)
@@ -514,7 +541,7 @@ while ( test -f $state_dir/complete_targets ) ; do
 
 	if push_state
 	then
-	git push $my_remote $pulling_branch:$pulling_branch || die $resolvemsg
+	git push $my_repo $pulling_branch:$pulling_branch || die $resolvemsg
 	# This is a reentry point (--continue)
 	#	complete_targets
 	#	pull_target
@@ -524,7 +551,7 @@ while ( test -f $state_dir/complete_targets ) ; do
 
 	if pull_request_state
 	then
-		pr_message="cppr: ${prefix} - Pull request from ${commits}"
+		pr_message="ppr: ${prefix} - Pull request from ${commits}"
 		echo "$pr_message" > $editmsg_file
 		if test -f "${state_dir}/pr_msg_${pulling_branch}"
 		then
