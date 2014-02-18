@@ -14,14 +14,17 @@ test -f ./testenv.sh &&
 test -f ./git-pcp.sh &&
 test -f ./git-ppr.sh || bail
 
-pathset=
-
-for ii in $(echo $PATH | tr ':' ' ')
+for jj in "/usr/libexec/git-core/" "$PWD"
 do
-    test "$(readlink -f ${ii})" = "$(readlink -f ${PWD})" && pathset=True
-done
+    pathset=
 
-test -z "${pathset}" && export PATH=$PATH:$PWD
+    for ii in $(echo $PATH | tr ':' ' ')
+    do
+        test "$(readlink -f ${ii})" = "$(readlink -f ${jj})" && pathset=True
+    done
+
+    test -z "${pathset}" && export PATH=$PATH:$jj
+done
 
 cp ./git-ppr.sh ./git-ppr || no_perms
 cp ./git-pcp.sh ./git-pcp || no_perms
