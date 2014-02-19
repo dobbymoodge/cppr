@@ -306,7 +306,7 @@ do
 			test $total_argc -eq 2 || usage
 			action=${1##--}
 			;;
-		[^-]*)
+		[!-]*)
 			break
 			;;
 	esac
@@ -411,7 +411,7 @@ while ( test -f $state_dir/remaining_targets ) ; do
 		then
 			git checkout -B $temp_branch $topic_target || die $resolvemsg
 		else
-			git checkout $temp_branch
+			git checkout $temp_branch || die $resolvemsg
 		fi
 		# This is a reentry point (--continue)
 		#	! ( git branch | grep -q "^\s*${temp_branch}$" )

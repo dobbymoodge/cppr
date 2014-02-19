@@ -259,7 +259,7 @@ do
 			test $total_argc -eq 2 || usage
 			action=${1##--}
 			;;
-		[^-]*)
+		[!-]*)
 			break
 			;;
 	esac
