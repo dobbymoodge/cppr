@@ -55,8 +55,8 @@ require_hub () {
 	req_msg="
 $(gettext 'This command requires a recent version of 
 hub, which can be found at: http://hub.github.com/')"
-	unalias hub
-	type hub || die $req_msg
+	unalias hub 2>/dev/null 1>/dev/null
+	type hub >/dev/null || die $req_msg
 	hub --version | grep -q '^git version' || die "$req_msg"
 }
 
@@ -72,10 +72,11 @@ GITHUB_USER and GITHUB_PASSWORD.')"
 	if test -z "$user_pass" && test -f "${HOME}/.config/hub"
 	then
 		oauth_line="$(grep -A2 '^github.com:' ${HOME}/.config/hub | grep '^\s*oauth_token:')"
-		user_pass="${oauth_line#*:}"
+		user_pass="${oauth_line#*:}:x-oauth-basic"
 	fi
 	test -z "$user_pass" && die "$no_creds_msg"
 	github_credentials="$user_pass"
+	echo "github_credentials: ${github_credentials}"
 }
 
 get_fork () {
@@ -185,7 +186,7 @@ read_state () {
 	test -f $state_dir/opt_my_fork &&
 	my_fork="$(cat $state_dir/opt_my_fork)" &&
 	test -f $state_dir/opt_our_fork &&
-	our_fork="$(cat $state_dir/opt_our_fork)" &&
+	our_fork="$(cat $state_dir/opt_our_fork)"
 }
 
 switch_to_safe_branch () {
@@ -337,7 +338,7 @@ while ( test -f $state_dir/remaining_targets ) ; do
 	if test -f "${pr_msg_dir}/${current_target}"
 	then
 		echo "" >> $editmsg_file
-		cat "${state_dir}/pr_msg_${pulling_branch}" >> $editmsg_file
+		cat "${pr_msg_dir}/${current_target}" >> $editmsg_file
 	fi
 	hub pull-request -b "${our_fork}:${dst_branch}" -h "${my_fork}:${src_branch}" || die $resolvemsg
 	echo $current_target > $state_dir/completed_targets
