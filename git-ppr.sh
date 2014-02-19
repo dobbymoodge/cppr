@@ -4,14 +4,15 @@
 SUBDIRECTORY_OK=Yes
 OPTIONS_KEEPDASHDASH=
 OPTIONS_SPEC="\
-git ppr --target_branch <destination branch or source branch:destination branch> [--target_branch <another branch/mapping> ...] --my_repo <remote/github repo> --our_repo <remote/github repo> [--prefix <temp branch prefix>]
+git ppr --target_branch <destination branch or source branch:destination branch> [--target_branch <another branch/mapping> ...] --my_repo <remote/github repo> --our_repo <remote/github repo> [--prefix <temp branch prefix>] [--pr_msg_dir <path/to/pr_message_files>]
 git-ppr --continue | --abort | --skip
 --
  Available options are
-t,target_branch=!   branch to create pull request against
-u,my_repo=!         remote or github repository from which pull requests will be made
-o,our_repo=!        remote or github repository (e.g. owner/repo) against which pull requests will be created
-p,prefix=!          prefix to use when mapping topic branches to target branches
+t,target_branch=!  branch to create pull request against
+u,my_repo=!        remote or github repository from which pull requests will be made
+o,our_repo=!       remote or github repository (e.g. owner/repo) against which pull requests will be created
+p,prefix=!         prefix to use when mapping topic branches to target branches
+m,pr_msg_dir=!     path to directory containing files with prepared pull request descriptions for each target branch mapping
  Actions:
 continue!          continue
 abort!             abort and check out the original branch
@@ -26,10 +27,8 @@ cd_to_toplevel
 
 state_dir=$GIT_DIR/ppr_state
 editmsg_file=$GIT_DIR/PULLREQ_EDITMSG
-target_branches=
 
-# prefix for naming topic branch(es)
-prefix=
+target_branches=
 # name of remote to push topic branch(es) onto
 my_repo=
 # git fork for my_repo (derived)
@@ -38,20 +37,11 @@ my_fork=
 our_repo=
 # git fork for our_repo (derived)
 our_fork=
-# List of commits to build PR from
-commits=
-# File with list of target branches for which topic branch has been created
-complete_targets=
-# File with name of target branch currently being used for topic branch creation
-topic_target=
-# File with name of current topic branch, when creating pull request
-pulling_branch=
-# File with list of topic branches which have successfully been pushed to $my_repo
-pulling_branch_pushed=
-# File with list of topic branches which have successfully been turned into pull requests
-pulled_branches=
-# Current target branch for which a pull request is being created
-pull_target=
+# prefix for naming topic branch(es)
+prefix=
+# directory containing prepared pull request descriptions named
+# source_branch:destination_branch - primarily for use with cppr
+pr_msg_dir=
 
 github_credentials=
 
@@ -117,8 +107,7 @@ write_state () {
 	echo "$my_fork" > $state_dir/opt_my_fork
 	echo "$our_fork" > $state_dir/opt_our_fork
 	echo "$prefix" > $state_dir/opt_prefix
-	echo "$commits" > $state_dir/opt_commits
-	echo "$current_branch" > $state_dir/current_branch
+	echo "$pr_msg_dir" > $state_dir/opt_pr_msg_dir
 }
 
 source_branch () {
@@ -182,6 +171,11 @@ initialize_ppr () {
 }
 
 read_state () {
+	test -f $state_dir/opt_prefix &&
+	prefix="$(cat $state_dir/opt_prefix)"
+	test -f $state_dir/opt_pr_msg_dir &&
+	pr_msg_dir="$(cat $state_dir/opt_pr_msg_dir)"
+
 	test -f $state_dir/opt_target_branches &&
 	target_branches="$(cat $state_dir/opt_target_branches)" &&
 	test -f $state_dir/opt_my_repo &&
@@ -192,12 +186,6 @@ read_state () {
 	my_fork="$(cat $state_dir/opt_my_fork)" &&
 	test -f $state_dir/opt_our_fork &&
 	our_fork="$(cat $state_dir/opt_our_fork)" &&
-	test -f $state_dir/opt_prefix &&
-	prefix="$(cat $state_dir/opt_prefix)" &&
-	test -f $state_dir/opt_commits &&
-	commits="$(cat $state_dir/opt_commits)" &&
-	test -f $state_dir/current_branch &&
-	current_branch="$(cat $state_dir/current_branch)"
 }
 
 switch_to_safe_branch () {
@@ -212,110 +200,23 @@ switch_to_safe_branch () {
 	test -n "$safe_branch" && git checkout "$safe_branch"
 }
 
-remove_target_branch () {
-	test -z "$1" && return
-	local new_target_branches=
-	for branch in $target_branches
-	do
-		if test "$1" != "$branch"
-		then
-			test -n "${new_target_branches}" &&
-			new_target_branches="${new_target_branches} ${branch}" ||
-			new_target_branches="${branch}"
-		fi
-	done
-	target_branches="$new_target_branches"
-	write_state
-}
-
 abort_ppr () {
 	test -d $state_dir || die "$(gettext 'No ppr operation is in progress')"
-	read_state
-	if test -f "${GIT_DIR}/CHERRY_PICK_HEAD"
-	then
-		git cherry-pick --abort
-	fi
-
-	switch_to_safe_branch
-
-	if test -n "$prefix" && test -f $state_dir/complete_targets
-	then
-		test -f $state_dir/topic_target && topic_target="$(cat $state_dir/topic_target)"
-		for branch in $(cat $state_dir/complete_targets) $topic_target
-		do
-			temp_branch="${prefix}-${branch}"
-			git rev-parse --verify --quiet "$temp_branch" > /dev/null &&
-			git branch -D "$temp_branch"
-		done
-	fi
-	test -f $state_dir/pulling_branch && pulling_branch="$(cat $state_dir/pulling_branch)"
-	test -f $state_dir/from_pr && from_pr="$(cat $state_dir/from_pr)"
-	for branch in $pulling_branch $from_pr
-	do
-		git rev-parse --verify --quiet "$branch" > /dev/null &&
-		git branch -D "$branch"
-	done
-	/bin/rm -rf $state_dir
+	/bin/rm --recursive --force $state_dir
 }
 
-skip_remaining_targets () {
-	test -f $state_dir/topic_target && topic_target="$(cat $state_dir/topic_target)" || return
-	test -n "${topic_target}" && temp_branch="${prefix}-${topic_target}"
-	if test "$(git rev-parse --abbrev-ref HEAD)" = "${temp_branch}"
-	then
-		test -f "${GIT_DIR}/CHERRY_PICK_HEAD" && git cherry-pick --abort
-	fi
-	switch_to_safe_branch
-	if git rev-parse --verify --quiet "$temp_branch" > /dev/null
-	then
-		git branch -D "$temp_branch"
-	fi
-	remove_target_branch "$topic_target"
-	/bin/rm $state_dir/topic_target
-	test -f $state_dir/pre_cp_ref && /bin/rm $state_dir/pre_cp_ref
-}
-
-cleanup_complete_targets () {
-	echo $pulling_branch >> $state_dir/pulled_branches
-	test -f $state_dir/pulling_branch && /bin/rm $state_dir/pulling_branch
-	test -f $state_dir/pulling_branch_pushed && /bin/rm $state_dir/pulling_branch_pushed
-	test -f $state_dir/pull_target && /bin/rm $state_dir/pull_target
-	test -z "$(cat $state_dir/complete_targets)" && /bin/rm $state_dir/complete_targets
-}
-
-skip_complete_targets () {
-	test -f $state_dir/pull_target && pull_target="$(cat $state_dir/pull_target)" || return
-	if test -f $state_dir/pulling_branch
-	then
-		pulling_branch="$(cat $state_dir/pulling_branch)"
-	else
-		test -n "${pull_target}" && pulling_branch="${prefix}-${pull_target}"
-	fi
-	switch_to_safe_branch
-	if ! test -f $state_dir/pulled_branches || ! grep -q "^${pulling_branch}$" $state_dir/pulled_branches
-	then
-		git rev-parse --verify --quiet "$pulling_branch" > /dev/null &&
-		git branch -D "$pulling_branch"
-		if test -f $state_dir/pulling_branch_pushed
-		then
-			git rev-parse --verify --quiet "${my_repo}/${pulling_branch}" > /dev/null &&
-			git push "$my_repo" ":${pulling_branch}"
-		fi
-	fi
-	cleanup_complete_targets
-}
 
 skip_branch () {
 	test -d $state_dir || die "$(gettext 'No ppr operation is in progress')"
 	read_state
+	test -f $state_dir/current_target && current_target="$(cat ${state_dir}/current_target)"
+	/bin/rm $state_dir/current_target
 	if test -f $state_dir/remaining_targets
 	then
-		skip_remaining_targets
-	elif test -f $state_dir/complete_targets
-	then
-		skip_complete_targets
+		test "$(head --lines=1 ${state_dir}/remaining_targets)" = "$current_target" &&
+		sed --in-place --expression='1d' $state_dir/remaining_targets
+		test -z "$(cat $state_dir/remaining_targets)" && /bin/rm $state_dir/remaining_targets
 	fi
-
 }
 
 # echo "========="
@@ -348,6 +249,11 @@ do
 			prefix=$2
 			shift
 			;;
+		--pr_msg_dir|-m)
+			test -z "${pr_msg_dir}" && test 2 -le "$#" || usage
+			pr_msg_dir=$2
+			shift
+			;;
 		--continue|--skip|--abort)
 			test $total_argc -eq 2 || usage
 			action=${1##--}
@@ -366,10 +272,9 @@ if test -z "$action"
 then
 	if test -d $state_dir
 	then
-		# Stolen haphazardly from git-rebase.sh
 		state_dir_base=${state_dir##*/}
 		cmd_live_ppr="ppr (--continue | --abort | --skip)"
-		cmd_clear_stale_ppr="rm -fr \"$state_dir\""
+		cmd_clear_stale_ppr="rm --recursive --force \"$state_dir\""
 		die "
 $(eval_gettext 'It seems that there is already a $state_dir_base directory, and
 I wonder if you are in the middle of another ppr run. If that is the case, please try
@@ -390,7 +295,7 @@ then
 	if ! test -d $state_dir
 	then
 		die "$(gettext 'No ppr run in progress?')"
-	elif test -n "${target_branches}${my_repo}${our_repo}${prefix}${commits}"
+	elif test -n "${target_branches}${my_repo}${our_repo}${prefix}${pr_msg_dir}"
 	then
 		die "$(eval_gettext '$action cannot be used with other arguments')"
 	fi
@@ -403,14 +308,6 @@ case "$action" in
 		# Sanity check
 		git rev-parse --verify HEAD >/dev/null ||
 		die "$(gettext 'Cannot read HEAD')"
-		git update-index --ignore-submodules --refresh &&
-		git diff-files --quiet --ignore-submodules || {
-			echo "$(gettext "You must edit all merge conflicts and then
-mark them as resolved using git add")"
-			exit 1
-		}
-		test -f "${GIT_DIR}/CHERRY_PICK_HEAD" &&
-		die "$(gettext 'Resolved cherry-picks must be committed using git commit')"
 		read_state || die "
 $(eval_gettext 'Could not read ppr state from $state_dir. Please verify
 permissions on the directory and try again')"
@@ -424,159 +321,32 @@ permissions on the directory and try again')"
 		;;
 esac
 
-bare_state () {
-	test -f $state_dir/remaining_targets &&
-	! test -f $state_dir/topic_target
-}
-
-checkout_state () {
-	test -f $state_dir/remaining_targets &&
-	test -f $state_dir/topic_target &&
-	! test "$(git rev-parse --abbrev-ref HEAD)" = "${temp_branch}"
-}
-
-cherry_pick_state () {
-	test -f $state_dir/remaining_targets &&
-	test -f $state_dir/topic_target &&
-	test "$(git rev-parse --abbrev-ref HEAD)" = "${temp_branch}"
-}
-
 while ( test -f $state_dir/remaining_targets ) ; do
-	if bare_state
+	if test -f $state_dir/current_target
 	then
-		topic_target=$(head --lines=1 $state_dir/remaining_targets)
-		# Move topic_target from remaining_targets:
-		echo $topic_target > $state_dir/topic_target
+		current_target="$(cat ${state_dir}/current_target)"
+	else
+		current_target=$(head --lines=1 $state_dir/remaining_targets)
+		echo $current_target > $state_dir/current_target
 		sed --in-place --expression='1d' $state_dir/remaining_targets
-	else
-		topic_target="$(cat $state_dir/topic_target)"
 	fi
-	temp_branch=$prefix-$topic_target
-
-	if checkout_state
+	src_branch="$(source_branch ${current_target})"
+	dst_branch="$(dest_branch ${current_target})"
+	pr_message="Generated pull request from git-ppr"
+	echo "$pr_message" > $editmsg_file
+	if test -f "${pr_msg_dir}/${current_target}"
 	then
-		git checkout -b $temp_branch $topic_target || die $resolvemsg
-		# This is a reentry point (--continue)
-		#	! ( git branch | grep -q "^\s*${temp_branch}$" )
-		#	remaining_targets
-		#	topic_target
+		echo "" >> $editmsg_file
+		cat "${state_dir}/pr_msg_${pulling_branch}" >> $editmsg_file
 	fi
-
-	if cherry_pick_state
-	then
-		if test -f $state_dir/pre_cp_ref
-		then
-			pre_cp_ref="$(cat $state_dir/pre_cp_ref)"
-		else
-			pre_cp_ref="$(git rev-parse HEAD)"
-			echo "$pre_cp_ref" > $state_dir/pre_cp_ref
-			git cherry-pick $commits || die $resolvemsg
-		fi
-		test "$pre_cp_ref" = "$(git rev-parse HEAD)" &&
-		die "
-$(gettext 'It looks like the cherry-pick failed, and the branch
-is unmodified. Please fix this issue and resume with --continue
-or skip this branch with --skip')"
-		# This is a reentry point (--continue)
-		#	( git branch | grep -q "^\s*${temp_branch}$" )
-		#	remaining_targets
-		#	topic_target
-		git log "${pre_cp_ref}"..HEAD > "${state_dir}/pr_msg_${temp_branch}"
-		/bin/rm $state_dir/topic_target
-		/bin/rm $state_dir/pre_cp_ref
-		echo $topic_target >> $state_dir/complete_targets
-		test -z "$(cat $state_dir/remaining_targets)" && /bin/rm $state_dir/remaining_targets
-	fi
+	hub pull-request -b "${our_fork}:${dst_branch}" -h "${my_fork}:${src_branch}" || die $resolvemsg
+	echo $current_target > $state_dir/completed_targets
+	/bin/rm $state_dir/current_target
+	test -f "${pr_msg_dir}/${current_target}" && /bin/rm "${pr_msg_dir}/${current_target}"
+	test -z "$(cat $state_dir/remaining_targets)" && /bin/rm $state_dir/remaining_targets
 done
 
-pull_target_state () {
-	test -f $state_dir/complete_targets &&
-	! test -f $state_dir/pull_target
-}
-
-checkout_pulling_branch_state () {
-	test -f $state_dir/complete_targets &&
-	test -f $state_dir/pull_target &&
-	! test -f $state_dir/pulling_branch
-}
-
-push_state () {
-	test -f $state_dir/complete_targets &&
-	test -f $state_dir/pull_target &&
-	test -f $state_dir/pulling_branch &&
-	! test -f $state_dir/pulling_branch_pushed
-}
-
-pull_request_state () {
-	test -f $state_dir/complete_targets &&
-	test -f $state_dir/pull_target &&
-	test -f $state_dir/pulling_branch &&
-	test -f $state_dir/pulling_branch_pushed
-}
-
-while ( test -f $state_dir/complete_targets ) ; do
-	# MAKE PRs
-	if pull_target_state
-	then
-		pull_target=$(head --lines=1 $state_dir/complete_targets)
-		# Move pull_target from complete_targets:
-		echo $pull_target > $state_dir/pull_target
-		sed --in-place --expression='1d' $state_dir/complete_targets
-	else
-		pull_target="$(cat $state_dir/pull_target)"
-	fi
-
-	if checkout_pulling_branch_state
-	then
-		pulling_branch="${prefix}-${pull_target}"
-		git checkout $pulling_branch || die $resolvemsg
-		# This is a reentry point (--continue)
-		#	complete_targets
-		#	pull_target
-		#
-		echo $pulling_branch > $state_dir/pulling_branch
-	else
-		pulling_branch="$(cat $state_dir/pulling_branch)"
-	fi
-
-	if push_state
-	then
-	git push $my_repo $pulling_branch:$pulling_branch || die $resolvemsg
-	# This is a reentry point (--continue)
-	#	complete_targets
-	#	pull_target
-	#	pulling_branch
-	echo $pulling_branch > $state_dir/pulling_branch_pushed
-	fi
-
-	if pull_request_state
-	then
-		pr_message="ppr: ${prefix} - Pull request from ${commits}"
-		echo "$pr_message" > $editmsg_file
-		if test -f "${state_dir}/pr_msg_${pulling_branch}"
-		then
-			echo "" >> $editmsg_file
-			cat "${state_dir}/pr_msg_${pulling_branch}" >> $editmsg_file
-		fi
-		# if ! hub pull-request -m "${pr_message}" -b "${our_fork}:${pull_target}" -h "${my_fork}:${pulling_branch}" ; then
-		hub pull-request -b "${our_fork}:${pull_target}" -h "${my_fork}:${pulling_branch}" || die $resolvemsg
-		# This is a reentry point (--continue)
-		#	complete_targets
-		#	pull_target
-		#	pulling_branch
-		#	pulling_branch_pushed
-		echo $pulling_branch >> $state_dir/pulled_branches
-		/bin/rm $state_dir/pulling_branch
-		/bin/rm $state_dir/pulling_branch_pushed
-		/bin/rm $state_dir/pull_target
-		test -f "${state_dir}/pr_msg_${pulling_branch}" && /bin/rm "${state_dir}/pr_msg_${pulling_branch}"
-		test -z "$(cat $state_dir/complete_targets)" && /bin/rm $state_dir/complete_targets
-	fi
-done
-
-if ! test -f $state_dir/complete_targets && ! test -f $state_dir/remaining_targets
+if ! test -f $state_dir/remaining_targets
 then
-	git checkout "$current_branch"
-	/bin/rm $state_dir/*
-	/usr/bin/rmdir $state_dir
+	/bin/rm --recursive --force $state_dir
 fi
