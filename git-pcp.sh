@@ -19,10 +19,14 @@ skip!              skip current branch and continue
 
 . git-sh-setup
 . git-sh-i18n
+. git-require-hub
+
 set_reflog_action pcp
 require_work_tree_exists
 cd_to_toplevel
 
+github_pr_regex="https://${GITHUB_HOST}/.\+/pull/[0-9]\+"
+github_credentials=
 state_dir=$GIT_DIR/pcp_state
 target_branches=
 
@@ -52,7 +56,8 @@ To check out the original branch and stop cherry-picking , run "pcp --abort".')
 get_fork () {
 	fork=$(git config --get remote.${1}.pushurl ||
 		   git config --get remote.${1}.url |
-			   awk '{gsub(/(^.+github.com.|\.git$)/, "", $1); print $1;}')
+			   awk '{gsub("(^.+"ENVIRON["GITHUB_HOST"]".|\\.git$)", "", $1); print $1;}')
+			   # awk '{gsub(/(^.+github.com.|\.git$)/, "", $1); print $1;}')
 	if test -z "$fork"
 	then
 		die $(gettext "Could not resolve fork for remote ${1}")
@@ -71,7 +76,61 @@ write_state () {
 	echo "$current_branch" > $state_dir/current_branch
 }
 
+temp_branch_name () {
+	tmp_branch_name=
+	while test -z "$tmp_branch_name"
+	do
+		tbname="temp-branch-$(date '+%s%N' | md5sum | cut -b1-8)"
+		git rev-parse --verify --quiet "$tbname" >/dev/null || tmp_branch_name="$tbname"
+	done
+	echo "$tmp_branch_name"
+}
+
+resolve_pr_to_commit () {
+	pr_url="$1"
+	api_url=$(echo $pr_url | awk -F '/' '{print "https://"ENVIRON["GITHUB_API_HOST"]"/repos/"$4"/"$5"/pulls/"$7;}')
+	#echo "curl --user ${github_credentials} --silent --output /dev/null --write-out '%{http_code}' ${api_url}"
+	test "200" = "$(curl --user ${github_credentials} --silent --output /dev/null --write-out '%{http_code}' ${api_url})" ||
+	die "
+$(eval_gettext 'The url $pr_url does not appear to be a valid github pull request URL.')"
+	tmp_branch_name=$(temp_branch_name)
+	if hub checkout $pr_url $tmp_branch_name 1>/dev/null 2>/dev/null
+	then
+		echo "$tmp_branch_name" >>$state_dir/temp_pr_branches
+	else
+		die "$(eval_gettext 'Could not check out pull request $pr_url')"
+	fi
+	echo $tmp_branch_name
+}
+
+validate_commits () {
+	resolved_commits=
+	for rev in $commits
+	do
+		echo $rev | grep -q "$github_pr_regex" &&
+		rev="$(resolve_pr_to_commit $rev)"
+		if ! git rev-parse --verify $rev 1>/dev/null 2>/dev/null
+		then
+			die "
+$(eval_gettext 'Could not validate commit $rev')"
+		fi
+		test -n "${resolved_commits}" &&
+		resolved_commits="${resolved_commits} ${rev}" ||
+		resolved_commits="${rev}"
+	done
+	commits="$resolved_commits"
+}
+
 initialize_pcp () {
+	hub_required_msg="
+$(gettext 'It looks like you are using a github pull request as
+a commit for cherry-picking; checking if hub is installed...')"
+	if echo $commits | grep -q "$github_pr_regex"
+	then
+		echo $hub_required_msg
+		require_hub
+		github_credentials=$(resolve_github_credentials)
+	fi
 	if test -n "$prefix"
 	then
 		conflicting_branches=
@@ -119,7 +178,7 @@ initialize_pcp () {
 			fi
 		fi
 	fi
-	
+
 	if ! test -d $state_dir
 	then
 		# unless continue/abort/etc.
@@ -127,6 +186,8 @@ initialize_pcp () {
 	fi
 
 	current_branch="$(git rev-parse --abbrev-ref HEAD)"
+
+	validate_commits
 
 	write_state
 
@@ -178,6 +239,17 @@ remove_target_branch () {
 	write_state
 }
 
+delete_temp_branches () {
+	if test -f $state_dir/temp_pr_branches
+	then
+		for tmp_branch in "$(cat ${state_dir}/temp_pr_branches)"
+		do
+			git rev-parse --verify --quiet "$tmp_branch" > /dev/null &&
+			git branch -D "$tmp_branch"
+		done
+	fi
+}
+
 abort_pcp () {
 	test -d $state_dir || die "$(gettext 'No pcp operation is in progress')"
 	read_state
@@ -208,6 +280,7 @@ abort_pcp () {
 			git branch -D "$branch"
 		done
 	fi
+	delete_temp_branches
 	/bin/rm -rf $state_dir
 }
 
@@ -514,6 +587,7 @@ fi
 if ! test -f $state_dir/complete_targets && ! test -f $state_dir/remaining_targets
 then
 	git checkout "$current_branch"
+	delete_temp_branches
 	/bin/rm $state_dir/*
 	/usr/bin/rmdir $state_dir
 fi

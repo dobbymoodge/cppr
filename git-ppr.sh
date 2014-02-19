@@ -21,6 +21,8 @@ skip!              skip current cherry-pick or pull request and continue
 
 . git-sh-setup
 . git-sh-i18n
+. git-require-hub
+
 set_reflog_action ppr
 require_work_tree_exists
 cd_to_toplevel
@@ -50,34 +52,6 @@ $(gettext 'When you have resolved this problem, run "ppr --continue".
 If you prefer to skip this target branch, run "ppr --skip" instead.
 To check out the original branch and stop creating pull requests, run "ppr --abort".')
 "
-
-require_hub () {
-	req_msg="
-$(gettext 'This command requires a recent version of 
-hub, which can be found at: http://hub.github.com/')"
-	unalias hub 2>/dev/null 1>/dev/null
-	type hub >/dev/null || die $req_msg
-	hub --version | grep -q '^git version' || die "$req_msg"
-}
-
-resolve_github_credentials () {
-	test -n "$github_credentials" && return 0
-	user_pass=
-	no_creds_msg="
-$(gettext 'This command requires github account credentials to be
-specified either in the hub command configuration located in
-$HOME/.config/hub, or in the environment variables
-GITHUB_USER and GITHUB_PASSWORD.')"
-	test -n "$GITHUB_USER" && test -n "$GITHUB_PASSWORD" && user_pass="${GITHUB_USER}:${GITHUB_PASSWORD}"
-	if test -z "$user_pass" && test -f "${HOME}/.config/hub"
-	then
-		oauth_line="$(grep -A2 '^github.com:' ${HOME}/.config/hub | grep '^\s*oauth_token:')"
-		user_pass="${oauth_line#*:}:x-oauth-basic"
-	fi
-	test -z "$user_pass" && die "$no_creds_msg"
-	github_credentials="$user_pass"
-	echo "github_credentials: ${github_credentials}"
-}
 
 get_fork () {
 	resolved_fork=

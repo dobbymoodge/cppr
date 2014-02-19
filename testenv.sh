@@ -12,6 +12,7 @@ no_perms () {
 
 test -f ./testenv.sh &&
 test -f ./git-pcp.sh &&
+test -f ./git-require-hub.sh &&
 test -f ./git-ppr.sh || bail
 
 for jj in "/usr/libexec/git-core/" "$PWD"
@@ -28,3 +29,4 @@ done
 
 cp ./git-ppr.sh ./git-ppr || no_perms
 cp ./git-pcp.sh ./git-pcp || no_perms
+cp ./git-require-hub.sh ./git-require-hub || no_perms
