@@ -83,8 +83,6 @@ write_state () {
 }
 
 initialize_cppr () {
-	resolve_forks
-
 	conflicting_branches=
 	conflicting_remote_branches=
 	for target in $target_branches
@@ -293,7 +291,7 @@ esac
 # Cherry-pick
 cp_target_branch_args () {
     local tbargs=
-    for branch in "$target_branches"
+    for branch in $target_branches
     do
         test -n "${tbargs}" &&
 	    tbargs="${tbargs} --target_branch ${branch}" ||
@@ -304,7 +302,7 @@ cp_target_branch_args () {
 
 determine_cped_branches () {
     missing_branches=
-    for branch in "$target_branches"
+    for branch in $target_branches
     do
         temp_branch="${prefix}-${branch}"
 		if git rev-parse --verify --quiet "$temp_branch" > /dev/null
@@ -335,33 +333,36 @@ pull_request_needed () {
 
 probably_pcp_failure="$(gettext 'This probably means that the git pcp subcommand is in the midst of a failure.')"
 
-if bare_state
-then
-    pcp_args="$(cp_target_branch_args) --my_remote ${my_remote} --prefix ${prefix} ${commits}"
-    echo "true" >$state_dir/pcp_in_progress
-    git pcp "$pcp_args" || die "\
+while test -f $state_dir/pcp_targets
+do
+    if bare_state
+    then
+        pcp_args="$(cp_target_branch_args) --my_remote ${my_remote} --prefix ${prefix} ${commits}"
+        echo "true" >$state_dir/pcp_in_progress
+        git pcp $pcp_args || die "\
 $(eval_gettext 'The git pcp subcommand has encountered a problem.
 $resolvemsg')"
-elif pcp_in_progress_state
-     test -d $state_dir/pcp_state && die "\
+    elif pcp_in_progress_state
+    then
+        test -d $state_dir/pcp_state && die "\
 $(eval_gettext 'There appears to be a git pcp subcommand in progress already.
 $probably_pcp_failure
 $resolvemsg')"
-     test -f "${GIT_DIR}/CHERRY_PICK_HEAD" && die "\
+        test -f "${GIT_DIR}/CHERRY_PICK_HEAD" && die "\
 $(eval_gettext 'There appears to be a git cherry-pick subcommand in progress.
 $probably_pcp_failure
 $resolvemsg')"
-     determine_cped_branches
-     mv $state_dir/pcp_in_progress $state_dir/pcp_complete
-     /bin/rm $state_dir/pcp_targets
-     if ! pull_request_needed
-     then
-         echo "$(gettext 'No branches exist for creating pull requests.')"
-         abort_cppr
-         exit
-     fi
-then
-fi
+        determine_cped_branches
+        mv $state_dir/pcp_in_progress $state_dir/pcp_complete
+        /bin/rm $state_dir/pcp_targets
+        if ! pull_request_needed
+        then
+            echo "$(gettext 'No branches exist for creating pull requests.')"
+            abort_cppr
+            exit
+        fi
+    fi
+done
 
 # Pull request
 write_pr_desc () {
@@ -370,14 +371,14 @@ write_pr_desc () {
     test -f "${state_dir}/${temp_branch}_head_ref" || return
     pre_cp_ref="$(cat ${state_dir}/${temp_branch}_head_ref)"
     git checkout "$temp_branch"
-    git log "${pre_cp_ref}"..HEAD > "${pr_desc_dir}/pr_msg_${temp_branch}"
+    git log "${pre_cp_ref}"..HEAD > "${pr_desc_dir}/${branch}:${temp_branch}"
     switch_to_safe_branch
 }
 
 pr_target_branch_args () {
     local tbargs=
     test -f $state_dir/cped_branches || return
-    for branch in "$(cat ${state_dir}/cped_branches)"
+    for branch in $(cat ${state_dir}/cped_branches)
     do
         temp_branch="${prefix}-${branch}"
         mapping="${branch}:${temp_branch}"
@@ -403,21 +404,25 @@ ppr_in_progress_state () {
 
 probably_ppr_failure="$(gettext 'This probably means that the git ppr subcommand is in the midst of a failure.')"
 
-if pull_request_state
-then
-    echo "true" >$state_dir/ppr_in_progress
-    ppr_args="$(pr_target_branch_args) --my_repo ${my_remote} --our_repo ${our_remote} --prefix ${prefix} --pr_msg_dir ${pr_desc_dir}"
-    git ppr "$ppr_args" || die "\
+while test -f $state_dir/cped_branches
+do
+    if pull_request_state
+    then
+        echo "true" >$state_dir/ppr_in_progress
+        ppr_args="$(pr_target_branch_args) --my_repo ${my_remote} --our_repo ${our_remote} --prefix ${prefix} --pr_msg_dir ${pr_desc_dir}"
+        git ppr $ppr_args || die "\
 $(eval_gettext 'The git-ppr subcommand has encountered a problem.
 $resolvemsg')"
-elif ppr_in_progress_state
-     test -d $state_dir/ppr_state && die "\
+    elif ppr_in_progress_state
+    then
+        test -d $state_dir/ppr_state && die "\
 $(eval_gettext 'There appears to be a git ppr subcommand in progress.
 $probably_ppr_failure
 $resolvemsg')"
-     echo "$(gettext 'All pull request operations appear to be complete.')"
-     /bin/rm $state_dir/cped_branches
-fi
+        echo "$(gettext 'All pull request operations appear to be complete.')"
+        /bin/rm $state_dir/cped_branches
+    fi
+done
 
 if ! test -f $state_dir/pcp_targets && ! test -f $state_dir/cped_branches
 then

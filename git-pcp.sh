@@ -110,18 +110,20 @@ validate_commits () {
 	resolved_commits=
 	for rev in $commits
 	do
-		echo $rev | grep -q "$github_pr_regex" &&
-		rev="$(resolve_pr_to_commit $rev)"
-		case "$?" in
-			1)
-				clean_die "\
+		if echo $rev | grep -q "$github_pr_regex"
+		then
+			rev="$(resolve_pr_to_commit $rev)"
+			case "$?" in
+				1)
+					clean_die "\
 $(eval_gettext 'The url $rev does not appear to be a valid github pull request URL.')"
-				;;
-			2)
-				clean_die "\
+					;;
+				2)
+					clean_die "\
 $(eval_gettext 'Could not check out pull request $pr_url')"
-				;;
-		esac
+					;;
+			esac
+		fi
 		if ! git rev-parse --verify $rev 1>/dev/null 2>/dev/null
 		then
 			clean_die "$(eval_gettext 'Could not validate commit $rev')"
@@ -259,7 +261,7 @@ remove_target_branch () {
 delete_temp_branches () {
 	if test -f $state_dir/temp_pr_branches
 	then
-		for tmp_branch in "$(cat ${state_dir}/temp_pr_branches)"
+		for tmp_branch in $(cat ${state_dir}/temp_pr_branches)
 		do
 			git rev-parse --verify --quiet "$tmp_branch" > /dev/null &&
 			git branch -D "$tmp_branch"
