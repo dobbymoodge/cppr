@@ -242,6 +242,11 @@ done
 
 require_hub
 resolve_github_credentials
+case "$?" in
+	1)
+		die "$require_hub_no_creds_msg"
+		;;
+esac
 
 if test -z "$action"
 then

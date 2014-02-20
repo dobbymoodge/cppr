@@ -53,6 +53,11 @@ If you prefer to skip this target branch, run "pcp --skip" instead.
 To check out the original branch and stop cherry-picking , run "pcp --abort".')
 "
 
+clean_die () {
+	test -d $state_dir && rm --recursive --force $state_dir
+	die "$1"
+}
+
 get_fork () {
 	fork=$(git config --get remote.${1}.pushurl ||
 		   git config --get remote.${1}.url |
@@ -89,16 +94,14 @@ temp_branch_name () {
 resolve_pr_to_commit () {
 	pr_url="$1"
 	api_url=$(echo $pr_url | awk -F '/' '{print "https://"ENVIRON["GITHUB_API_HOST"]"/repos/"$4"/"$5"/pulls/"$7;}')
-	#echo "curl --user ${github_credentials} --silent --output /dev/null --write-out '%{http_code}' ${api_url}"
 	test "200" = "$(curl --user ${github_credentials} --silent --output /dev/null --write-out '%{http_code}' ${api_url})" ||
-	die "
-$(eval_gettext 'The url $pr_url does not appear to be a valid github pull request URL.')"
+	return 1
 	tmp_branch_name=$(temp_branch_name)
 	if hub checkout $pr_url $tmp_branch_name 1>/dev/null 2>/dev/null
 	then
 		echo "$tmp_branch_name" >>$state_dir/temp_pr_branches
 	else
-		die "$(eval_gettext 'Could not check out pull request $pr_url')"
+		return 2
 	fi
 	echo $tmp_branch_name
 }
@@ -109,10 +112,19 @@ validate_commits () {
 	do
 		echo $rev | grep -q "$github_pr_regex" &&
 		rev="$(resolve_pr_to_commit $rev)"
+		case "$?" in
+			1)
+				clean_die "\
+$(eval_gettext 'The url $rev does not appear to be a valid github pull request URL.')"
+				;;
+			2)
+				clean_die "\
+$(eval_gettext 'Could not check out pull request $pr_url')"
+				;;
+		esac
 		if ! git rev-parse --verify $rev 1>/dev/null 2>/dev/null
 		then
-			die "
-$(eval_gettext 'Could not validate commit $rev')"
+			clean_die "$(eval_gettext 'Could not validate commit $rev')"
 		fi
 		test -n "${resolved_commits}" &&
 		resolved_commits="${resolved_commits} ${rev}" ||
@@ -129,7 +141,12 @@ a commit for cherry-picking; checking if hub is installed...')"
 	then
 		echo $hub_required_msg
 		require_hub
-		github_credentials=$(resolve_github_credentials)
+		github_credentials="$(resolve_github_credentials)"
+		case "$?" in
+			1)
+				die "$require_hub_no_creds_msg"
+				;;
+		esac
 	fi
 	if test -n "$prefix"
 	then
