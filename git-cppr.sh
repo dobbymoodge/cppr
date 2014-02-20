@@ -47,17 +47,6 @@ $(gettext 'When you have resolved this problem, run "cppr --continue".
 To check out the original branch and stop creating pull requests, run "cppr --abort".')
 "
 
-get_fork () {
-	fork=$(git config --get remote.${1}.pushurl ||
-		   git config --get remote.${1}.url |
-			   awk '{gsub(/(^.+github.com.|\.git$)/, "", $1); print $1;}')
-	if test -z "$fork"
-	then
-		die $(gettext "Could not resolve fork for remote ${1}")
-	fi
-	echo $fork
-}
-
 write_state () {
 	echo "$target_branches" > $state_dir/opt_target_branches
 	echo "$my_remote" > $state_dir/opt_my_remote
@@ -354,7 +343,7 @@ pr_target_branch_args () {
 	for branch in $(cat ${state_dir}/cped_branches)
 	do
 		temp_branch="${prefix}-${branch}"
-		mapping="${branch}:${temp_branch}"
+		mapping="${temp_branch}:${branch}"
 		test -n "${tbargs}" &&
 		tbargs="${tbargs} --target_branch ${mapping}" ||
 		tbargs="--target_branch ${mapping}"

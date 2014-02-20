@@ -85,12 +85,12 @@ write_state () {
 	echo "$pr_msg_dir" > $state_dir/opt_pr_msg_dir
 }
 
-dest_branch () {
+source_branch () {
 	echo "${1%:*}"
 }
 
-source_branch () {
-	echo "${1#$(dest_branch ${1}):}"
+dest_branch () {
+	echo "${1#$(source_branch ${1}):}"
 }
 
 resolve_target_branches () {

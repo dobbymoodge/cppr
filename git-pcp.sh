@@ -50,7 +50,7 @@ push_branch=
 resolvemsg="
 $(gettext 'When you have resolved this problem, run "pcp --continue".
 If you prefer to skip this target branch, run "pcp --skip" instead.
-To check out the original branch and stop cherry-picking , run "pcp --abort".')
+To check out the original branch and stop cherry-picking, run "pcp --abort".')
 "
 
 clean_die () {
@@ -62,7 +62,6 @@ get_fork () {
 	fork=$(git config --get remote.${1}.pushurl ||
 		   git config --get remote.${1}.url |
 			   awk '{gsub("(^.+"ENVIRON["GITHUB_HOST"]".|\\.git$)", "", $1); print $1;}')
-			   # awk '{gsub(/(^.+github.com.|\.git$)/, "", $1); print $1;}')
 	if test -z "$fork"
 	then
 		die $(gettext "Could not resolve fork for remote ${1}")
