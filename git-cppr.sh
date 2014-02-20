@@ -333,7 +333,7 @@ write_pr_desc () {
 	test -f "${state_dir}/${temp_branch}_head_ref" || return
 	pre_cp_ref="$(cat ${state_dir}/${temp_branch}_head_ref)"
 	git checkout "$temp_branch"
-	git log "${pre_cp_ref}"..HEAD > "${pr_desc_dir}/${branch}:${temp_branch}"
+	git log "${pre_cp_ref}"..HEAD > "${pr_desc_dir}/${temp_branch}:${branch}"
 	switch_to_safe_branch
 }
 

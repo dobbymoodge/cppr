@@ -241,7 +241,7 @@ do
 done
 
 require_hub
-resolve_github_credentials
+github_credentials="$(resolve_github_credentials)"
 case "$?" in
 	1)
 		die "$require_hub_no_creds_msg"
