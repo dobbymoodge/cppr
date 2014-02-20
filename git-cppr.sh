@@ -4,7 +4,7 @@ SUBDIRECTORY_OK=Yes
 OPTIONS_KEEPDASHDASH=
 OPTIONS_SPEC="\
 git cppr --target_branch <branch> [--target_branch <another branch> ...] --my_remote <remote> --our_remote <remote> --prefix <temp branch prefix> <commit(s)>
-git-cppr --continue | --abort | --skip
+git-cppr --continue | --abort
 --
  Available options are
 t,target_branch=!  branch to create pull request against
@@ -14,7 +14,6 @@ p,prefix=!         prefix to use when creating topic branches
  Actions:
 continue!          continue
 abort!             abort and check out the original branch
-skip!              skip current cherry-pick or pull request and continue
 "
 
 LONG_USAGE="\
@@ -41,24 +40,9 @@ my_remote=
 our_remote=
 # List of commits to build PR from
 commits=
-# File with list of target branches for which topic branch has been created
-complete_targets=
-# File with name of target branch currently being used for topic branch creation
-topic_target=
-# File with name of current topic branch, when creating pull request
-pulling_branch=
-# File with list of topic branches which have successfully been pushed to $my_remote
-pulling_branch_pushed=
-# File with list of topic branches which have successfully been turned into pull requests
-pulled_branches=
-# Current target branch for which a pull request is being created
-pull_target=
-
-
 
 resolvemsg="
 $(gettext 'When you have resolved this problem, run "cppr --continue".
-If you prefer to skip this target branch, run "cppr --skip" instead.
 To check out the original branch and stop creating pull requests, run "cppr --abort".')
 "
 
@@ -175,12 +159,10 @@ switch_to_safe_branch () {
 }
 
 abort_cppr () {
-	/bin/rm -rf $state_dir
-}
-
-skip_branch () {
-	test -d $state_dir || die "$(gettext 'No cppr operation is in progress')"
-	read_state
+    test -f "${GIT_DIR}/pcp_state" && git pcp --abort
+    test -f "${GIT_DIR}/ppr_state" && git ppr --abort
+    switch_to_safe_branch
+	/bin/rm --recursive --force $state_dir
 }
 
 # echo "========="
@@ -213,7 +195,7 @@ do
 			prefix=$2
 			shift
 			;;
-		--continue|--skip|--abort)
+		--continue|--abort)
 			test $total_argc -eq 2 || usage
 			action=${1##--}
 			;;
@@ -267,24 +249,14 @@ case "$action" in
 		# Sanity check
 		git rev-parse --verify HEAD >/dev/null ||
 		die "$(gettext 'Cannot read HEAD')"
-		git update-index --ignore-submodules --refresh &&
-		git diff-files --quiet --ignore-submodules || {
-			echo "$(gettext "You must edit all merge conflicts and then
-mark them as resolved using git add")"
-			exit 1
-		}
-		test -f "${GIT_DIR}/CHERRY_PICK_HEAD" &&
-		die "$(gettext 'Resolved cherry-picks must be committed using git commit')"
 		read_state || die "
 $(eval_gettext 'Could not read cppr state from $state_dir. Please verify
 permissions on the directory and try again')"
 		;;
 	abort)
+        read_state
 		abort_cppr
 		exit 0
-		;;
-	skip)
-		skip_branch
 		;;
 esac
 
