@@ -1,4 +1,5 @@
 #!/bin/sh
+# -*- indent-tabs-mode: t -*-
 
 SUBDIRECTORY_OK=Yes
 OPTIONS_KEEPDASHDASH=
@@ -125,9 +126,9 @@ initialize_cppr () {
 
 	for target in $target_branches
 	do
-        dst_target="${prefix}-${target}"
+		dst_target="${prefix}-${target}"
 		echo "$target" >>$state_dir/pcp_targets
-        git rev-parse $target >"${state_dir}/${dst_target}_head_ref"
+		git rev-parse $target >"${state_dir}/${dst_target}_head_ref"
 	done
 }
 
@@ -159,9 +160,9 @@ switch_to_safe_branch () {
 }
 
 abort_cppr () {
-    test -f "${GIT_DIR}/pcp_state" && git pcp --abort
-    test -f "${GIT_DIR}/ppr_state" && git ppr --abort
-    switch_to_safe_branch
+	test -f "${GIT_DIR}/pcp_state" && git pcp --abort
+	test -f "${GIT_DIR}/ppr_state" && git ppr --abort
+	switch_to_safe_branch
 	/bin/rm --recursive --force $state_dir
 }
 
@@ -254,7 +255,7 @@ $(eval_gettext 'Could not read cppr state from $state_dir. Please verify
 permissions on the directory and try again')"
 		;;
 	abort)
-        read_state
+		read_state
 		abort_cppr
 		exit 0
 		;;
@@ -262,142 +263,142 @@ esac
 
 # Cherry-pick
 cp_target_branch_args () {
-    local tbargs=
-    for branch in $target_branches
-    do
-        test -n "${tbargs}" &&
-	    tbargs="${tbargs} --target_branch ${branch}" ||
-	    tbargs="--target_branch ${branch}"
-    done
-    echo $tbargs
+	local tbargs=
+	for branch in $target_branches
+	do
+		test -n "${tbargs}" &&
+		tbargs="${tbargs} --target_branch ${branch}" ||
+		tbargs="--target_branch ${branch}"
+	done
+	echo $tbargs
 }
 
 determine_cped_branches () {
-    missing_branches=
-    for branch in $target_branches
-    do
-        temp_branch="${prefix}-${branch}"
+	missing_branches=
+	for branch in $target_branches
+	do
+		temp_branch="${prefix}-${branch}"
 		if git rev-parse --verify --quiet "$temp_branch" > /dev/null
-        then
-            echo "$branch" >>$state_dir/cped_branches
-        else
-            echo "$(eval_gettext 'WARNING: Branch ${branch} lacks corresponding cherry-pick branch ${temp_branch}')"
-            missing_branches="true"
-        fi
-    done
-    test -n "$missing_branches" && echo "$(eval_gettext 'WARNING: No pull requests will be generated for these branches')"
+		then
+			echo "$branch" >>$state_dir/cped_branches
+		else
+			echo "$(eval_gettext 'WARNING: Branch ${branch} lacks corresponding cherry-pick branch ${temp_branch}')"
+			missing_branches="true"
+		fi
+	done
+	test -n "$missing_branches" && echo "$(eval_gettext 'WARNING: No pull requests will be generated for these branches')"
 }
 
 bare_state () {
-    test -f $state_dir/pcp_targets &&
-    ! test -f $state_dir/pcp_in_progress
+	test -f $state_dir/pcp_targets &&
+	! test -f $state_dir/pcp_in_progress
 }
 
 pcp_in_progress_state () {
-    test -f $state_dir/pcp_targets &&
-    test -f $state_dir/pcp_in_progress
+	test -f $state_dir/pcp_targets &&
+	test -f $state_dir/pcp_in_progress
 }
 
 pull_request_needed () {
-    test -f $state_dir/cped_branches &&
-    test -n "$(cat ${state_dir}/cped_branches)"
+	test -f $state_dir/cped_branches &&
+	test -n "$(cat ${state_dir}/cped_branches)"
 }
 
 probably_pcp_failure="$(gettext 'This probably means that the git pcp subcommand is in the midst of a failure.')"
 
 while test -f $state_dir/pcp_targets
 do
-    if bare_state
-    then
-        pcp_args="$(cp_target_branch_args) --my_remote ${my_remote} --prefix ${prefix} ${commits}"
-        echo "true" >$state_dir/pcp_in_progress
-        git pcp $pcp_args || die "\
+	if bare_state
+	then
+		pcp_args="$(cp_target_branch_args) --my_remote ${my_remote} --prefix ${prefix} ${commits}"
+		echo "true" >$state_dir/pcp_in_progress
+		git pcp $pcp_args || die "\
 $(eval_gettext 'The git pcp subcommand has encountered a problem.
 $resolvemsg')"
-    elif pcp_in_progress_state
-    then
-        test -d $state_dir/pcp_state && die "\
+	elif pcp_in_progress_state
+	then
+		test -d $state_dir/pcp_state && die "\
 $(eval_gettext 'There appears to be a git pcp subcommand in progress already.
 $probably_pcp_failure
 $resolvemsg')"
-        test -f "${GIT_DIR}/CHERRY_PICK_HEAD" && die "\
+		test -f "${GIT_DIR}/CHERRY_PICK_HEAD" && die "\
 $(eval_gettext 'There appears to be a git cherry-pick subcommand in progress.
 $probably_pcp_failure
 $resolvemsg')"
-        determine_cped_branches
-        mv $state_dir/pcp_in_progress $state_dir/pcp_complete
-        /bin/rm $state_dir/pcp_targets
-        if ! pull_request_needed
-        then
-            echo "$(gettext 'No branches exist for creating pull requests.')"
-            abort_cppr
-            exit
-        fi
-    fi
+		determine_cped_branches
+		mv $state_dir/pcp_in_progress $state_dir/pcp_complete
+		/bin/rm $state_dir/pcp_targets
+		if ! pull_request_needed
+		then
+			echo "$(gettext 'No branches exist for creating pull requests.')"
+			abort_cppr
+			exit
+		fi
+	fi
 done
 
 # Pull request
 write_pr_desc () {
-    branch="$1"
-    temp_branch="${prefix}-${branch}"
-    test -f "${state_dir}/${temp_branch}_head_ref" || return
-    pre_cp_ref="$(cat ${state_dir}/${temp_branch}_head_ref)"
-    git checkout "$temp_branch"
-    git log "${pre_cp_ref}"..HEAD > "${pr_desc_dir}/${branch}:${temp_branch}"
-    switch_to_safe_branch
+	branch="$1"
+	temp_branch="${prefix}-${branch}"
+	test -f "${state_dir}/${temp_branch}_head_ref" || return
+	pre_cp_ref="$(cat ${state_dir}/${temp_branch}_head_ref)"
+	git checkout "$temp_branch"
+	git log "${pre_cp_ref}"..HEAD > "${pr_desc_dir}/${branch}:${temp_branch}"
+	switch_to_safe_branch
 }
 
 pr_target_branch_args () {
-    local tbargs=
-    test -f $state_dir/cped_branches || return
-    for branch in $(cat ${state_dir}/cped_branches)
-    do
-        temp_branch="${prefix}-${branch}"
-        mapping="${branch}:${temp_branch}"
-        test -n "${tbargs}" &&
-	    tbargs="${tbargs} --target_branch ${mapping}" ||
-	    tbargs="--target_branch ${mapping}"
-        write_pr_desc "$branch"
-    done
-    echo $tbargs
+	local tbargs=
+	test -f $state_dir/cped_branches || return
+	for branch in $(cat ${state_dir}/cped_branches)
+	do
+		temp_branch="${prefix}-${branch}"
+		mapping="${branch}:${temp_branch}"
+		test -n "${tbargs}" &&
+		tbargs="${tbargs} --target_branch ${mapping}" ||
+		tbargs="--target_branch ${mapping}"
+		write_pr_desc "$branch"
+	done
+	echo $tbargs
 }
 
 pull_request_state () {
-    pull_request_needed &&
-    test -f $state_dir/pcp_complete &&
-    ! test -f $state_dir/ppr_in_progress
+	pull_request_needed &&
+	test -f $state_dir/pcp_complete &&
+	! test -f $state_dir/ppr_in_progress
 }
 
 ppr_in_progress_state () {
-    pull_request_needed &&
-    test -f $state_dir/pcp_complete &&
-    test -f $state_dir/ppr_in_progress
+	pull_request_needed &&
+	test -f $state_dir/pcp_complete &&
+	test -f $state_dir/ppr_in_progress
 }
 
 probably_ppr_failure="$(gettext 'This probably means that the git ppr subcommand is in the midst of a failure.')"
 
 while test -f $state_dir/cped_branches
 do
-    if pull_request_state
-    then
-        echo "true" >$state_dir/ppr_in_progress
-        ppr_args="$(pr_target_branch_args) --my_repo ${my_remote} --our_repo ${our_remote} --prefix ${prefix} --pr_msg_dir ${pr_desc_dir}"
-        git ppr $ppr_args || die "\
+	if pull_request_state
+	then
+		echo "true" >$state_dir/ppr_in_progress
+		ppr_args="$(pr_target_branch_args) --my_repo ${my_remote} --our_repo ${our_remote} --prefix ${prefix} --pr_msg_dir ${pr_desc_dir}"
+		git ppr $ppr_args || die "\
 $(eval_gettext 'The git-ppr subcommand has encountered a problem.
 $resolvemsg')"
-    elif ppr_in_progress_state
-    then
-        test -d $state_dir/ppr_state && die "\
+	elif ppr_in_progress_state
+	then
+		test -d $state_dir/ppr_state && die "\
 $(eval_gettext 'There appears to be a git ppr subcommand in progress.
 $probably_ppr_failure
 $resolvemsg')"
-        echo "$(gettext 'All pull request operations appear to be complete.')"
-        /bin/rm $state_dir/cped_branches
-    fi
+		echo "$(gettext 'All pull request operations appear to be complete.')"
+		/bin/rm $state_dir/cped_branches
+	fi
 done
 
 if ! test -f $state_dir/pcp_targets && ! test -f $state_dir/cped_branches
 then
-    switch_to_safe_branch
+	switch_to_safe_branch
 	/bin/rm --recursive --force $state_dir
 fi
