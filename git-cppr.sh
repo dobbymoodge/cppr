@@ -312,9 +312,12 @@ $resolvemsg')"
 # $(eval_gettext 'There appears to be a git pcp subcommand in progress already.
 # $probably_pcp_failure
 # $resolvemsg')"
-		test -d "${GIT_DIR}/pcp_state" && git pcp --continue || die "\
+		if test -d "${GIT_DIR}/pcp_state"
+		then
+			git pcp --continue || die "\
 $(eval_gettext 'The git pcp subcommand has encountered a problem.
 $resolvemsg')"
+		fi
 		test -f "${GIT_DIR}/CHERRY_PICK_HEAD" && die "\
 $(eval_gettext 'There appears to be a git cherry-pick subcommand in progress.
 $probably_pcp_failure
@@ -386,9 +389,12 @@ $resolvemsg')"
 # $(eval_gettext 'There appears to be a git ppr subcommand in progress.
 # $probably_ppr_failure
 # $resolvemsg')"
- 		test -d "${GIT_DIR}/ppr_state" && git ppr --continue || die "\
+ 		if test -d "${GIT_DIR}/ppr_state"
+		then
+			git ppr --continue || die "\
 $(eval_gettext 'The git-ppr subcommand has encountered a problem.
 $resolvemsg')"
+		fi
 		echo "$(gettext 'All pull request operations appear to be complete.')"
 		/bin/rm $state_dir/cped_branches
 	fi
