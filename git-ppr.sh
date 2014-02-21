@@ -32,6 +32,8 @@ cd_to_toplevel
 state_dir=$GIT_DIR/ppr_state
 editmsg_file=$GIT_DIR/PULLREQ_EDITMSG
 
+max_tries=3
+
 target_branches=
 # name of remote to push topic branch(es) onto
 my_repo=
@@ -50,9 +52,9 @@ pr_msg_dir=
 github_credentials=
 
 resolvemsg="
-$(gettext 'When you have resolved this problem, run "ppr --continue".
-If you prefer to skip this target branch, run "ppr --skip" instead.
-To check out the original branch and stop creating pull requests, run "ppr --abort".')
+$(gettext 'When you have resolved this problem, run "git ppr --continue".
+If you prefer to skip this target branch, run "git ppr --skip" instead.
+To check out the original branch and stop creating pull requests, run "git ppr --abort".')
 "
 
 get_fork () {
@@ -119,10 +121,24 @@ verify_branches () {
 	do
 		src_branch="$(source_branch ${branch})"
 		dst_branch="$(dest_branch ${branch})"
-		test "200" = "$(curl --user ${github_credentials} --silent --output /dev/null --write-out '%{http_code}' https://api.github.com/repos/${my_fork}/branches/${src_branch})" ||
-		die "$(eval_gettext 'This branch could not be verified: ${my_fork}:${src_branch}')"
-		test "200" = "$(curl --user ${github_credentials} --silent --output /dev/null --write-out '%{http_code}' https://api.github.com/repos/${our_fork}/branches/${dst_branch})" ||
-		die "$(eval_gettext 'This branch could not be verified: ${our_fork}:${dst_branch}')"
+		retry=0
+		result=
+		while test "$retry" -lt "$max_tries"
+		do
+			result="$(curl --user ${github_credentials} --silent --output /dev/null --write-out '%{http_code}' https://api.github.com/repos/${my_fork}/branches/${src_branch})"
+			test "$result" = "200" && break
+			sleep 2
+		done
+		test "$result" = "200" || die "$(eval_gettext 'This branch could not be verified: ${my_fork}:${src_branch}')"
+		retry=0
+		result=
+		while test "$retry" -lt "$max_tries"
+		do
+			result="$(curl --user ${github_credentials} --silent --output /dev/null --write-out '%{http_code}' https://api.github.com/repos/${our_fork}/branches/${dst_branch})"
+			test "$result" = "200" && break
+			sleep 2
+		done
+		test "$result" = "200" || die "$(eval_gettext 'This branch could not be verified: ${our_fork}:${dst_branch}')"
 	done
 }
 

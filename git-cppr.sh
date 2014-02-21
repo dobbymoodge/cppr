@@ -7,7 +7,7 @@ SUBDIRECTORY_OK=Yes
 OPTIONS_KEEPDASHDASH=
 OPTIONS_SPEC="\
 git cppr --target_branch <branch> [--target_branch <another branch> ...] --my_remote <remote> --our_remote <remote> --prefix <temp branch prefix> <commit(s)>
-git-cppr --continue | --abort
+git-cppr --continue | --abort | --skip
 --
  Available options are
 t,target_branch=!  branch to create pull request against
@@ -17,6 +17,7 @@ p,prefix=!         prefix to use when creating topic branches
  Actions:
 continue!          continue
 abort!             abort and check out the original branch
+skip!              skip current branch and continue
 "
 
 LONG_USAGE="\
@@ -45,8 +46,9 @@ our_remote=
 commits=
 
 resolvemsg="
-$(gettext 'When you have resolved this problem, run "cppr --continue".
-To check out the original branch and stop creating pull requests, run "cppr --abort".')
+$(gettext 'When you have resolved this problem, run "git cppr --continue".
+If you prefer to skip this branch, run "git cppr --skip" instead.
+To check out the original branch and stop creating pull requests, run "git cppr --abort".')
 "
 
 write_state () {
@@ -151,10 +153,15 @@ switch_to_safe_branch () {
 }
 
 abort_cppr () {
-	test -f "${GIT_DIR}/pcp_state" && git pcp --abort
-	test -f "${GIT_DIR}/ppr_state" && git ppr --abort
+	test -d "${GIT_DIR}/pcp_state" && git pcp --abort
+	test -d "${GIT_DIR}/ppr_state" && git ppr --abort
 	switch_to_safe_branch
 	/bin/rm --recursive --force $state_dir
+}
+
+skip_cppr () {
+	test -d "${GIT_DIR}/pcp_state" && git pcp --skip
+	test -d "${GIT_DIR}/ppr_state" && git ppr --skip
 }
 
 # echo "========="
@@ -187,7 +194,7 @@ do
 			prefix=$2
 			shift
 			;;
-		--continue|--abort)
+		--continue|--abort|--skip)
 			test $total_argc -eq 2 || usage
 			action=${1##--}
 			;;
@@ -204,7 +211,7 @@ then
 	then
 		# Stolen haphazardly from git-rebase.sh
 		state_dir_base=${state_dir##*/}
-		cmd_live_cppr="cppr (--continue | --abort)"
+		cmd_live_cppr="cppr (--continue | --abort | --skip)"
 		cmd_clear_stale_cppr="rm -fr \"$state_dir\""
 		die "
 $(eval_gettext 'It seems that there is already a $state_dir_base directory, and
@@ -249,6 +256,10 @@ permissions on the directory and try again')"
 		read_state
 		abort_cppr
 		exit 0
+		;;
+	skip)
+		read_state
+		skip_cppr
 		;;
 esac
 

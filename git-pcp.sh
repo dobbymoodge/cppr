@@ -48,9 +48,9 @@ pushing_branch=
 push_branch=
 
 resolvemsg="
-$(gettext 'When you have resolved this problem, run "pcp --continue".
-If you prefer to skip this target branch, run "pcp --skip" instead.
-To check out the original branch and stop cherry-picking, run "pcp --abort".')
+$(gettext 'When you have resolved this problem, run "git pcp --continue".
+If you prefer to skip this target branch, run "git pcp --skip" instead.
+To check out the original branch and stop cherry-picking, run "git pcp --abort".')
 "
 
 clean_die () {
