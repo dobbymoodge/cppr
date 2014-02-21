@@ -1,6 +1,8 @@
 #!/bin/sh
 # -*- indent-tabs-mode: t -*-
 
+test -n "$DEBUG_CPPR" && set -x
+
 SUBDIRECTORY_OK=Yes
 OPTIONS_KEEPDASHDASH=
 OPTIONS_SPEC="\
@@ -202,7 +204,7 @@ then
 	then
 		# Stolen haphazardly from git-rebase.sh
 		state_dir_base=${state_dir##*/}
-		cmd_live_cppr="cppr (--continue | --abort | --skip)"
+		cmd_live_cppr="cppr (--continue | --abort)"
 		cmd_clear_stale_cppr="rm -fr \"$state_dir\""
 		die "
 $(eval_gettext 'It seems that there is already a $state_dir_base directory, and
@@ -306,9 +308,12 @@ $(eval_gettext 'The git pcp subcommand has encountered a problem.
 $resolvemsg')"
 	elif pcp_in_progress_state
 	then
-		test -d $state_dir/pcp_state && die "\
-$(eval_gettext 'There appears to be a git pcp subcommand in progress already.
-$probably_pcp_failure
+# 		test -d "${GIT_DIR}/pcp_state" && die "\
+# $(eval_gettext 'There appears to be a git pcp subcommand in progress already.
+# $probably_pcp_failure
+# $resolvemsg')"
+		test -d "${GIT_DIR}/pcp_state" && git pcp --continue || die "\
+$(eval_gettext 'The git pcp subcommand has encountered a problem.
 $resolvemsg')"
 		test -f "${GIT_DIR}/CHERRY_PICK_HEAD" && die "\
 $(eval_gettext 'There appears to be a git cherry-pick subcommand in progress.
@@ -377,9 +382,12 @@ $(eval_gettext 'The git-ppr subcommand has encountered a problem.
 $resolvemsg')"
 	elif ppr_in_progress_state
 	then
-		test -d $state_dir/ppr_state && die "\
-$(eval_gettext 'There appears to be a git ppr subcommand in progress.
-$probably_ppr_failure
+# 		test -d "${GIT_DIR}/ppr_state" && die "\
+# $(eval_gettext 'There appears to be a git ppr subcommand in progress.
+# $probably_ppr_failure
+# $resolvemsg')"
+ 		test -d "${GIT_DIR}/ppr_state" && git ppr --continue || die "\
+$(eval_gettext 'The git-ppr subcommand has encountered a problem.
 $resolvemsg')"
 		echo "$(gettext 'All pull request operations appear to be complete.')"
 		/bin/rm $state_dir/cped_branches

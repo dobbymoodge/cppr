@@ -1,6 +1,8 @@
 #!/bin/sh
 # -*- indent-tabs-mode: t -*-
 
+test -n "$DEBUG_CPPR" && set -x
+
 if test -z "$GITHUB_HOST"
 then
     GITHUB_HOST="github.com"

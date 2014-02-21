@@ -1,6 +1,8 @@
 #!/bin/sh
 # -*- indent-tabs-mode: t -*-
 
+test -n "$DEBUG_CPPR" && set -x
+
 SUBDIRECTORY_OK=Yes
 OPTIONS_KEEPDASHDASH=
 OPTIONS_SPEC="\
