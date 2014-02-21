@@ -196,10 +196,6 @@ skip_branch () {
 	fi
 }
 
-# echo "========="
-# echo "Args: $@"
-# echo "========="
-
 total_argc=$#
 while test $# != 0
 do

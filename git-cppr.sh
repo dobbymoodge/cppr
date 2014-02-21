@@ -85,20 +85,20 @@ initialize_cppr () {
 	then
 		if test -n "$conflicting_branches"
 		then
-			echo "$(gettext 'The following local branches conflict with the branch names generated using the prefix you provided; please remove the existing branches or select a different prefix: ')"
+			warn "$(gettext 'The following local branches conflict with the branch names generated using the prefix you provided; please remove the existing branches or select a different prefix: ')"
 			for br in $conflicting_branches
 			do
-				echo "	  ${br}"
+				warn "	  ${br}"
 			done
 			test -z "$conflicting_remote_branches" && exit 1
 		fi
 
 		if test -n "$conflicting_remote_branches"
 		then
-			echo "$(gettext 'The following remote branches conflict with the branch names generated using the prefix you provided; please remove the existing branches or select a different prefix: ')"
+			warn "$(gettext 'The following remote branches conflict with the branch names generated using the prefix you provided; please remove the existing branches or select a different prefix: ')"
 			for br in $conflicting_remote_branches
 			do
-				echo "	  ${br}"
+				warn "	  ${br}"
 			done
 			exit 1
 		fi
@@ -273,11 +273,11 @@ determine_cped_branches () {
 		then
 			echo "$branch" >>$state_dir/cped_branches
 		else
-			echo "$(eval_gettext 'WARNING: Branch ${branch} lacks corresponding cherry-pick branch ${temp_branch}')"
+			warn "$(eval_gettext 'Branch ${branch} lacks corresponding cherry-pick branch ${temp_branch}')"
 			missing_branches="true"
 		fi
 	done
-	test -n "$missing_branches" && echo "$(eval_gettext 'WARNING: No pull requests will be generated for these branches')"
+	test -n "$missing_branches" && warn "$(eval_gettext 'No pull requests will be generated for these branches')"
 }
 
 bare_state () {
@@ -327,7 +327,7 @@ $resolvemsg')"
 		/bin/rm $state_dir/pcp_targets
 		if ! pull_request_needed
 		then
-			echo "$(gettext 'No branches exist for creating pull requests.')"
+			warn "$(gettext 'No branches exist for creating pull requests.')"
 			abort_cppr
 			exit
 		fi
@@ -342,7 +342,6 @@ write_pr_desc () {
 	pre_cp_ref="$(cat ${state_dir}/${temp_branch}_head_ref)"
 	git checkout "$temp_branch"
 	git log "${pre_cp_ref}"..HEAD > "${pr_desc_dir}/${temp_branch}:${branch}"
-	switch_to_safe_branch
 }
 
 pr_target_branch_args () {
@@ -357,6 +356,7 @@ pr_target_branch_args () {
 		tbargs="--target_branch ${mapping}"
 		write_pr_desc "$branch"
 	done
+	switch_to_safe_branch
 	echo $tbargs
 }
 
@@ -395,7 +395,7 @@ $resolvemsg')"
 $(eval_gettext 'The git-ppr subcommand has encountered a problem.
 $resolvemsg')"
 		fi
-		echo "$(gettext 'All pull request operations appear to be complete.')"
+		say "$(gettext 'All pull request operations appear to be complete.')"
 		/bin/rm $state_dir/cped_branches
 	fi
 done

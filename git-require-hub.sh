@@ -24,6 +24,10 @@ specified either in the hub command configuration located in
 $HOME/.config/hub, or in the environment variables
 GITHUB_USER and GITHUB_PASSWORD.')"
 
+warn () {
+	echo "$*" >&2
+}
+
 require_hub () {
 	req_msg="
 $(gettext 'This command requires a recent version of 

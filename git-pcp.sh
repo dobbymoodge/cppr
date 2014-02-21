@@ -44,8 +44,6 @@ complete_targets=
 topic_target=
 # File with name of current topic branch, when creating pull request
 pushing_branch=
-# File with list of topic branches which have successfully been turned into pull requests
-pulled_branches=
 # Current target branch for which a pull request is being created
 push_branch=
 
@@ -142,7 +140,7 @@ $(gettext 'It looks like you are using a github pull request as
 a commit for cherry-picking; checking if hub is installed...')"
 	if echo $commits | grep -q "$github_pr_regex"
 	then
-		echo $hub_required_msg
+		warn $hub_required_msg
 		require_hub
 		github_credentials="$(resolve_github_credentials)"
 		case "$?" in
@@ -179,20 +177,20 @@ a commit for cherry-picking; checking if hub is installed...')"
 		then
 			if test -n "$conflicting_branches"
 			then
-				echo "$(gettext 'The following local branches conflict with the branch names generated using the prefix you provided; please remove the existing branches or select a different prefix: ')"
+				warn "$(gettext 'The following local branches conflict with the branch names generated using the prefix you provided; please remove the existing branches or select a different prefix: ')"
 				for br in $conflicting_branches
 				do
-					echo "	  ${br}"
+					warn "	  ${br}"
 				done
 				test -z "$conflicting_remote_branches" && exit 1
 			fi
 
 			if test -n "$conflicting_remote_branches"
 			then
-				echo "$(gettext 'The following remote branches conflict with the branch names generated using the prefix you provided; please remove the existing branches or select a different prefix: ')"
+				warn "$(gettext 'The following remote branches conflict with the branch names generated using the prefix you provided; please remove the existing branches or select a different prefix: ')"
 				for br in $conflicting_remote_branches
 				do
-					echo "	  ${br}"
+					warn "	  ${br}"
 				done
 				exit 1
 			fi
@@ -370,10 +368,6 @@ skip_branch () {
 
 }
 
-# echo "========="
-# echo "Args: $@"
-# echo "========="
-
 total_argc=$#
 while test $# != 0
 do
@@ -448,7 +442,7 @@ case "$action" in
 		die "$(gettext 'Cannot read HEAD')"
 		git update-index --ignore-submodules --refresh &&
 		git diff-files --quiet --ignore-submodules || {
-			echo "$(gettext "You must edit all merge conflicts and then
+			warn "$(gettext "You must edit all merge conflicts and then
 mark them as resolved using git add")"
 			exit 1
 		}
@@ -506,10 +500,6 @@ while ( test -f $state_dir/remaining_targets ) ; do
 		else
 			git checkout $temp_branch || die $resolvemsg
 		fi
-		# This is a reentry point (--continue)
-		#	! ( git branch | grep -q "^\s*${temp_branch}$" )
-		#	remaining_targets
-		#	topic_target
 	fi
 
 	if cherry_pick_state
@@ -527,10 +517,6 @@ while ( test -f $state_dir/remaining_targets ) ; do
 $(gettext 'It looks like the cherry-pick failed, and the branch
 is unmodified. Please fix this issue and resume with --continue
 or skip this branch with --skip')"
-		# This is a reentry point (--continue)
-		#	( git branch | grep -q "^\s*${temp_branch}$" )
-		#	remaining_targets
-		#	topic_target
 		git log "${pre_cp_ref}"..HEAD > "${state_dir}/pr_msg_${temp_branch}"
 		/bin/rm $state_dir/topic_target
 		/bin/rm $state_dir/pre_cp_ref
@@ -559,7 +545,6 @@ push_state () {
 if test -n "$my_remote"
 then
 	while ( test -f $state_dir/complete_targets ) ; do
-		# MAKE PRs
 		if push_branch_state
 		then
 			push_branch=$(head --lines=1 $state_dir/complete_targets)
@@ -579,10 +564,6 @@ then
 				pushing_branch="${push_branch}"
 			fi
 			git checkout $pushing_branch || die $resolvemsg
-			# This is a reentry point (--continue)
-			#	complete_targets
-			#	push_branch
-			#
 			echo $pushing_branch > $state_dir/pushing_branch
 		else
 			pushing_branch="$(cat $state_dir/pushing_branch)"
@@ -591,10 +572,6 @@ then
 		if push_state
 		then
 			git push $my_remote $pushing_branch:$pushing_branch || die $resolvemsg
-			# This is a reentry point (--continue)
-			#	complete_targets
-			#	push_branch
-			#	pushing_branch
 			/bin/rm $state_dir/pushing_branch
 			/bin/rm $state_dir/push_branch
 			test -z "$(cat $state_dir/complete_targets)" && /bin/rm $state_dir/complete_targets
