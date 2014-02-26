@@ -4,12 +4,12 @@ NAME
 
 SYNOPSIS
 
-  git cppr (-t | --target_branch <branch>)... -u | --my_remote <remote>
+  git-cppr (-t | --target_branch <branch>)... -m | --my_remote <remote>
     -o | --our_repo <remote/github repo> -p | --prefix <temp branch prefix> <commit/pull request URL(s)>...
 
-  git cppr --continue | --skip | --abort
+  git-cppr --continue | --skip | --abort
 
-  git cppr --help
+  git-cppr --help
 
 DESCRIPTION
 
@@ -25,7 +25,7 @@ OPTIONS
   You can specify multiple branches by giving the option more than
   once (e.g. -t branch1 -t branch2)
 
-  -u|--my_remote <remote>  
+  -m|--my_remote <remote>  
     Tracked repository to push topic branches to
 
   This will be used as the head fork for creating the pull requests
@@ -38,11 +38,43 @@ OPTIONS
   -p|--prefix <prefix>  
     String to prepend to target branch names when creating topic branches
 
+  Topic branches will be named like "prefix-target_branch"
+
   <commit/pull request URL(s)>...  
     One or several commits to cherry-pick into each topic branch.
 
   Commits can be any valid git-cherry-pick(1) commit, or github pull
   request URLs
+
+ACTIONS
+
+  --continue  
+    Attempt to restart the parallel pull request process after
+    resolving merge conflicts or validation problems with the
+    underlying cherry-pick and pull-request processes
+    
+  --skip  
+    Halt handling the current target branch only
+
+  If the current topic branch has not yet been pushed to the topic
+  branch remote (my_remote), this will abort, if needed, the running
+  cherry-pick and remove the topic branch from the local
+  repository. If the topic branch has been pushed, it will remove the
+  topic branch from the list of branches to base pull requests from,
+  but will not remove it from the local repository or tracked
+  repository specified by my_remote.
+
+  git-cppr will resume handling any remaining unprocessed target
+  branches.
+
+  --abort  
+    Halt handling current and remaining target branches
+
+  Any topic branches which have been pushed to the tracked repository
+  specified by my_remote will not be removed from the remote or local
+  repositories. Topic branches which haven't had changes cherry-picked
+  into them will be removed. Pull requests which have already been
+  created will not be cancelled.
 
 APPLICATION USAGE
 
