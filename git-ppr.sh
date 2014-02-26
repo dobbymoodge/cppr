@@ -11,10 +11,10 @@ git-ppr --continue | --abort | --skip
 --
  Available options are
 t,target_branch=!  branch to create pull request against
-u,my_repo=!        remote or github repository from which pull requests will be made
+m,my_repo=!        remote or github repository from which pull requests will be made
 o,our_repo=!       remote or github repository (e.g. owner/repo) against which pull requests will be created
 p,prefix=!         prefix to use when mapping topic branches to target branches
-m,pr_msg_dir=!     path to directory containing files with prepared pull request descriptions for each target branch mapping
+d,pr_msg_dir=!     path to directory containing files with prepared pull request descriptions for each target branch mapping
  Actions:
 continue!          continue
 abort!             abort and check out the original branch
@@ -223,7 +223,7 @@ do
 			target_branches="${2}"
 			shift
 			;;
-		--my_repo|-u)
+		--my_repo|-m)
 			test -z "${my_repo}" && test 2 -le "$#" || usage
 			my_repo=$2
 			shift
@@ -238,7 +238,7 @@ do
 			prefix=$2
 			shift
 			;;
-		--pr_msg_dir|-m)
+		--pr_msg_dir|-d)
 			test -z "${pr_msg_dir}" && test 2 -le "$#" || usage
 			pr_msg_dir=$2
 			shift

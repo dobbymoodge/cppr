@@ -6,13 +6,13 @@ test -n "$DEBUG_CPPR" && set -x
 SUBDIRECTORY_OK=Yes
 OPTIONS_KEEPDASHDASH=
 OPTIONS_SPEC="\
-git cppr --target_branch <branch> [--target_branch <another branch> ...] --my_remote <remote> --our_remote <remote> --prefix <temp branch prefix> <commit(s)>
+git cppr --target_branch <branch> [--target_branch <another branch> ...] --my_remote <remote> --our_repo <remote> --prefix <temp branch prefix> <commit(s)>
 git-cppr --continue | --abort | --skip
 --
  Available options are
 t,target_branch=!  branch to create pull request against
-u,my_remote=!      remote to push topic branches to, from which pull requests will be made
-o,our_remote=!     remote against which pull requests will be created
+m,my_remote=!      remote to push topic branches to, from which pull requests will be made
+o,our_repo=!     remote against which pull requests will be created
 p,prefix=!         prefix to use when creating topic branches
  Actions:
 continue!          continue
@@ -41,7 +41,7 @@ prefix=
 # name of remote to push topic branch(es) onto
 my_remote=
 # name of remote to stage PR against
-our_remote=
+our_repo=
 # List of commits to build PR from
 commits=
 
@@ -54,7 +54,7 @@ To check out the original branch and stop creating pull requests, run "git cppr 
 write_state () {
 	echo "$target_branches" > $state_dir/opt_target_branches
 	echo "$my_remote" > $state_dir/opt_my_remote
-	echo "$our_remote" > $state_dir/opt_our_remote
+	echo "$our_repo" > $state_dir/opt_our_repo
 	echo "$prefix" > $state_dir/opt_prefix
 	echo "$commits" > $state_dir/opt_commits
 	echo "$current_branch" > $state_dir/current_branch
@@ -130,8 +130,8 @@ read_state () {
 	target_branches="$(cat $state_dir/opt_target_branches)" &&
 	test -f $state_dir/opt_my_remote &&
 	my_remote="$(cat $state_dir/opt_my_remote)" &&
-	test -f $state_dir/opt_our_remote &&
-	our_remote="$(cat $state_dir/opt_our_remote)" &&
+	test -f $state_dir/opt_our_repo &&
+	our_repo="$(cat $state_dir/opt_our_repo)" &&
 	test -f $state_dir/opt_prefix &&
 	prefix="$(cat $state_dir/opt_prefix)" &&
 	test -f $state_dir/opt_commits &&
@@ -179,14 +179,14 @@ do
 			target_branches="${2}"
 			shift
 			;;
-		--my_remote|-u)
+		--my_remote|-m)
 			test -z "${my_remote}" && test 2 -le "$#" || usage
 			my_remote=$2
 			shift
 			;;
-		--our_remote|-o)
-			test -z "${our_remote}" && test 2 -le "$#" || usage
-			our_remote=$2
+		--our_repo|-o)
+			test -z "${our_repo}" && test 2 -le "$#" || usage
+			our_repo=$2
 			shift
 			;;
 		--prefix|-p)
@@ -224,7 +224,7 @@ valuable there.')"
 	else
 		test -n "$target_branches" &&
 		test -n "$my_remote" &&
-		test -n "$our_remote" &&
+		test -n "$our_repo" &&
 		test -n "$prefix" || usage
 	fi
 	test $# -ge "1" || usage
@@ -235,7 +235,7 @@ then
 	if ! test -d $state_dir
 	then
 		die "$(gettext 'No cppr run in progress?')"
-	elif test -n "${target_branches}${my_remote}${our_remote}${prefix}${commits}"
+	elif test -n "${target_branches}${my_remote}${our_repo}${prefix}${commits}"
 	then
 		die "$(eval_gettext '$action cannot be used with other arguments')"
 	fi
@@ -390,7 +390,7 @@ do
 	if pull_request_state
 	then
 		echo "true" >$state_dir/ppr_in_progress
-		ppr_args="$(pr_target_branch_args) --my_repo ${my_remote} --our_repo ${our_remote} --prefix ${prefix} --pr_msg_dir ${pr_desc_dir}"
+		ppr_args="$(pr_target_branch_args) --my_repo ${my_remote} --our_repo ${our_repo} --prefix ${prefix} --pr_msg_dir ${pr_desc_dir}"
 		git ppr $ppr_args || die "\
 $(eval_gettext 'The git-ppr subcommand has encountered a problem.
 $resolvemsg')"
