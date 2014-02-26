@@ -1,0 +1,61 @@
+NAME
+
+  git-cppr
+
+SYNOPSIS
+
+  git cppr (-t | --target_branch <branch>)... -u | --my_remote <remote>
+    -o | --our_repo <remote/github repo> -p | --prefix <temp branch prefix> <commit/pull request URL(s)>...
+
+  git cppr --continue | --skip | --abort
+
+  git cppr --help
+
+DESCRIPTION
+
+git cppr provides a way to create pull requests in parallel against
+multiple branches from a common set of commits (and/or pull
+requests).
+
+OPTIONS
+
+  -t|--target_branch <branch> ...  
+    Branch(es) to create pull requests against.
+
+  You can specify multiple branches by giving the option more than
+  once (e.g. -t branch1 -t branch2)
+
+  -u|--my_remote <remote>  
+    Tracked repository to push topic branches to
+
+  This will be used as the head fork for creating the pull requests
+
+  -o|--our_repo <remote/github repo>  
+    Tracked repository or github fork
+
+  Specifies base fork to create pull requests against
+
+  -p|--prefix <prefix>  
+    String to prepend to target branch names when creating topic branches
+
+  <commit/pull request URL(s)>...  
+    One or several commits to cherry-pick into each topic branch.
+
+  Commits can be any valid git-cherry-pick(1) commit, or github pull
+  request URLs
+
+APPLICATION USAGE
+
+EXIT STATUS
+
+EXAMPLE
+
+WARNINGS
+
+  git version >= 1.8.0 is required
+
+  A recent version of hub is required - http://hub.github.com/
+
+SEE ALSO
+
+AUTHOR
