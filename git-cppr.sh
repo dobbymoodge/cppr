@@ -351,7 +351,7 @@ write_pr_desc () {
 	temp_branch="${prefix}-${branch}"
 	test -f "${state_dir}/${temp_branch}_head_ref" || return
 	pre_cp_ref="$(cat ${state_dir}/${temp_branch}_head_ref)"
-	git checkout "$temp_branch"
+	git checkout "$temp_branch" 1>/dev/null 2>/dev/null
 	git log "${pre_cp_ref}"..HEAD > "${pr_desc_dir}/${temp_branch}:${branch}"
 }
 
@@ -367,7 +367,7 @@ pr_target_branch_args () {
 		tbargs="--target_branch ${mapping}"
 		write_pr_desc "$branch"
 	done
-	switch_to_safe_branch
+	switch_to_safe_branch 1>/dev/null 2>/dev/null
 	echo $tbargs
 }
 
