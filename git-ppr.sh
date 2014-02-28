@@ -315,7 +315,8 @@ permissions on the directory and try again')"
 		;;
 esac
 
-while ( test -f $state_dir/remaining_targets ) ; do
+while test -f $state_dir/remaining_targets
+do
 	if test -f $state_dir/current_target
 	then
 		current_target="$(cat ${state_dir}/current_target)"
