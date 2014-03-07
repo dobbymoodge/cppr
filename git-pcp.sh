@@ -102,7 +102,10 @@ resolve_pr_to_commit () {
 	else
 		return 2
 	fi
-	echo $tmp_branch_name
+	git-pcp--pr-commits ${pr_url}
+	pr_commits=$(git-pcp--pr-commits ${pr_url}) || return 3
+	test -z "${pr_commits}" && return 3
+	echo $pr_commits
 }
 
 validate_commits () {
@@ -111,22 +114,38 @@ validate_commits () {
 	do
 		if echo $rev | grep -q "$github_pr_regex"
 		then
+			pr_url=$rev
 			rev="$(resolve_pr_to_commit $rev)"
 			case "$?" in
 				1)
 					clean_die "\
-$(eval_gettext 'The url $rev does not appear to be a valid github pull request URL.')"
+$(eval_gettext 'The url $pr_url does not appear to be a valid github pull request URL.')"
 					;;
 				2)
 					clean_die "\
 $(eval_gettext 'Could not check out pull request $pr_url')"
 					;;
+				3)
+					clean_die "\
+$(eval_gettext 'Could not determine commit references for pull request $pr_url')"
+					;;
+				0)
+					say "\
+$(eval_gettext 'Pull request validated for URL $pr_url')"
+					;;
+				*)
+					clean_die "\
+$(eval_gettext 'Unknown error occurred while validating pull request $pr_url')"
+					;;
 			esac
 		fi
-		if ! git rev-parse --verify $rev 1>/dev/null 2>/dev/null
-		then
-			clean_die "$(eval_gettext 'Could not validate commit $rev')"
-		fi
+		for this_rev in $rev
+		do
+			if ! git rev-parse --verify $this_rev 1>/dev/null 2>/dev/null
+			then
+				clean_die "$(eval_gettext 'Could not validate commit $rev')"
+			fi
+		done
 		test -n "${resolved_commits}" &&
 		resolved_commits="${resolved_commits} ${rev}" ||
 		resolved_commits="${rev}"
