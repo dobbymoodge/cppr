@@ -76,7 +76,25 @@ ACTIONS
   into them will be removed. Pull requests which have already been
   created will not be cancelled.
 
+TERMINOLOGY
+
+  Base fork  
+    This is the github repository to which pull requests will be
+    submitted. Typically this will be the central project repository.
+
+  Head fork  
+    This is the github repository from which pull requests will be
+    created. Typically this will be your personal fork of a central
+    project repository.
+
 APPLICATION USAGE
+
+git-cppr creates pull requests against a base fork by cherry-picking changes into unique topic branches in the head fork.
+
+
+Assumes head fork is available as a remote repository
+Assumes base fork is either a remote repository or is specified like "owner:repo"
+Assumes each --target-branch matches a branch on base fork
 
 EXIT STATUS
 
