@@ -52,7 +52,6 @@ end
   
 begin
   puts "#{@api_client.get_commits_for_pr(ARGV[0]).join(' ')}\n"
-  exit! true
 rescue Net::HTTPServerException
   exit! false
 end
