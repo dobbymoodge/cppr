@@ -102,8 +102,8 @@ resolve_pr_to_commit () {
 	else
 		return 2
 	fi
-	git-pcp--pr-commits ${pr_url}
-	pr_commits=$(git-pcp--pr-commits ${pr_url}) || return 3
+	git-cppr--github-helper ${pr_url}
+	pr_commits=$(git-cppr--github-helper ${pr_url}) || return 3
 	test -z "${pr_commits}" && return 3
 	echo $pr_commits
 }
