@@ -319,10 +319,6 @@ $(eval_gettext 'The git pcp subcommand has encountered a problem.
 $resolvemsg')"
 	elif pcp_in_progress_state
 	then
-# 		test -d "${GIT_DIR}/pcp_state" && die "\
-# $(eval_gettext 'There appears to be a git pcp subcommand in progress already.
-# $probably_pcp_failure
-# $resolvemsg')"
 		if test -d "${GIT_DIR}/pcp_state"
 		then
 			git pcp --continue || die "\
@@ -396,10 +392,6 @@ $(eval_gettext 'The git-ppr subcommand has encountered a problem.
 $resolvemsg')"
 	elif ppr_in_progress_state
 	then
-# 		test -d "${GIT_DIR}/ppr_state" && die "\
-# $(eval_gettext 'There appears to be a git ppr subcommand in progress.
-# $probably_ppr_failure
-# $resolvemsg')"
  		if test -d "${GIT_DIR}/ppr_state"
 		then
 			git ppr --continue || die "\

@@ -32,8 +32,6 @@ cd_to_toplevel
 state_dir=$GIT_DIR/ppr_state
 editmsg_file=$GIT_DIR/PULLREQ_EDITMSG
 
-max_tries=3
-
 target_branches=
 # name of remote to push topic branch(es) onto
 my_repo=
@@ -58,25 +56,29 @@ To check out the original branch and stop creating pull requests, run "git ppr -
 "
 
 get_fork () {
+	remote=$1
 	resolved_fork=
-	push_url=$(git config --get remote.${1}.pushurl ||
-			   git config --get remote.${1}.url)
+	push_url=$(git config --get remote.${remote}.pushurl ||
+			   git config --get remote.${remote}.url)
 	if test -z "$push_url"
 	then
-		test "200" = "$(curl --user ${github_credentials} --silent --output /dev/null --write-out '%{http_code}' https://api.github.com/repos/${1})" &&
-		resolved_fork="${1}"
+		git-cppr--github-helper --verify-fork "${remote}" &&
+		resolved_fork="${remote}"
 	else
-		resolved_fork=$(git config --get remote.${1}.pushurl ||
-						git config --get remote.${1}.url |
+		resolved_fork=$(git config --get remote.${remote}.pushurl ||
+						git config --get remote.${remote}.url |
 							awk '{gsub(/(^.+github.com.|\.git$)/, "", $1); print $1;}')
 	fi
-	test -z "$resolved_fork" && die "$(gettext 'Could not resolve fork for remote ${1}')"
+	test -z "$resolved_fork" && return 1
 	echo $resolved_fork
 }
 
 resolve_forks () {
-	my_fork=$(get_fork $my_repo)
-	our_fork=$(get_fork $our_repo)
+	resolve_forks_msg="$(gettext 'Could not resolve fork for remote')"
+	my_fork=$(get_fork $my_repo) ||
+	die "$resolve_forks_msg $my_repo"
+	our_fork=$(get_fork $our_repo) ||
+	die "$resolve_forks_msg $our_repo"
 }
 
 write_state () {
@@ -121,24 +123,10 @@ verify_branches () {
 	do
 		src_branch="$(source_branch ${branch})"
 		dst_branch="$(dest_branch ${branch})"
-		retry=0
-		result=
-		while test "$retry" -lt "$max_tries"
-		do
-			result="$(curl --user ${github_credentials} --silent --output /dev/null --write-out '%{http_code}' https://api.github.com/repos/${my_fork}/branches/${src_branch})"
-			test "$result" = "200" && break
-			sleep 2
-		done
-		test "$result" = "200" || die "$(eval_gettext 'This branch could not be verified: ${my_fork}:${src_branch}')"
-		retry=0
-		result=
-		while test "$retry" -lt "$max_tries"
-		do
-			result="$(curl --user ${github_credentials} --silent --output /dev/null --write-out '%{http_code}' https://api.github.com/repos/${our_fork}/branches/${dst_branch})"
-			test "$result" = "200" && break
-			sleep 2
-		done
-		test "$result" = "200" || die "$(eval_gettext 'This branch could not be verified: ${our_fork}:${dst_branch}')"
+		git-cppr--github-helper --verify-branch $src_branch --fork $my_fork ||
+		die "$(eval_gettext 'This branch could not be verified: ${my_fork}:${src_branch}')"
+		git-cppr--github-helper --verify-branch $dst_branch --fork $my_fork ||
+		die "$(eval_gettext 'This branch could not be verified: ${our_fork}:${dst_branch}')"
 	done
 }
 

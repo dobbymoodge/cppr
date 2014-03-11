@@ -58,17 +58,6 @@ clean_die () {
 	die "$1"
 }
 
-get_fork () {
-	fork=$(git config --get remote.${1}.pushurl ||
-		   git config --get remote.${1}.url |
-			   awk '{gsub("(^.+"ENVIRON["GITHUB_HOST"]".|\\.git$)", "", $1); print $1;}')
-	if test -z "$fork"
-	then
-		die $(gettext "Could not resolve fork for remote ${1}")
-	fi
-	echo $fork
-}
-
 write_state () {
 	echo "$target_branches" > $state_dir/opt_target_branches
 	if test -n "$my_remote"
@@ -92,9 +81,7 @@ temp_branch_name () {
 
 resolve_pr_to_commit () {
 	pr_url="$1"
-	api_url=$(echo $pr_url | awk -F '/' '{print "https://"ENVIRON["GITHUB_API_HOST"]"/repos/"$4"/"$5"/pulls/"$7;}')
-	test "200" = "$(curl --user ${github_credentials} --silent --output /dev/null --write-out '%{http_code}' ${api_url})" ||
-	return 1
+	git-cppr--github-helper --verify-pull "$pr_url" || return 1
 	tmp_branch_name=$(temp_branch_name)
 	if hub checkout $pr_url $tmp_branch_name 1>/dev/null 2>/dev/null
 	then
@@ -102,8 +89,7 @@ resolve_pr_to_commit () {
 	else
 		return 2
 	fi
-	git-cppr--github-helper ${pr_url}
-	pr_commits=$(git-cppr--github-helper ${pr_url}) || return 3
+	pr_commits=$(git-cppr--github-helper --commits-for-pr ${pr_url}) || return 3
 	test -z "${pr_commits}" && return 3
 	echo $pr_commits
 }
