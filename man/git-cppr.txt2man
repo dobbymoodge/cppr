@@ -95,6 +95,18 @@ git-cppr creates pull requests against a base fork by cherry-picking changes int
 * the specified base fork is either a remote repository or is specified like "owner:repo"
 * each --target-branch specified matches a branch on base fork
 
+Suppose you're doing development on a project which is a fork of an upstream project; both forks are managed via github. Development upstream all takes place in one branch, but your project's fork maintains 2 stable branches and one development branch. The development branch more-or-less tracks the current state of the upstream code base, but the stable branches are "snapshots" of the code base, frozen at distinct points in time. You do all your development against a personal fork of your project, and submit all changes to your project in the form of pull requests.
+
+Upstream has just merged a Pull Request that fixes a security flaw. A quick scan of your branches reveals that this bug exists in all three of your branches.
+
+You can cherry-pick the commits from the upstream pull request into a new pull request against your fork using git-cppr and the following information:
+
+* The upstream pull request URL - https://github.com/upstream/repo/pull/12
+* The branches in your project which need to receive the bug fixed code:
+  * master (development branch)
+  * release-1
+  * release-2
+
 EXIT STATUS
 
 EXAMPLE
