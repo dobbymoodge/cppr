@@ -17,6 +17,17 @@ git cppr provides a way to create pull requests in parallel against
 multiple branches from a common set of commits (and/or pull
 requests).
 
+TERMINOLOGY
+
+  Base fork  
+    This is the github repository to which pull requests will be
+    submitted. Typically this will be the central project repository.
+
+  Head fork  
+    This is the github repository from which pull requests will be
+    created. Typically this will be your personal fork of a central
+    project repository.
+
 OPTIONS
 
   -t|--target_branch <branch> ...  
@@ -75,17 +86,6 @@ ACTIONS
   repositories. Topic branches which haven't had changes cherry-picked
   into them will be removed. Pull requests which have already been
   created will not be cancelled.
-
-TERMINOLOGY
-
-  Base fork  
-    This is the github repository to which pull requests will be
-    submitted. Typically this will be the central project repository.
-
-  Head fork  
-    This is the github repository from which pull requests will be
-    created. Typically this will be your personal fork of a central
-    project repository.
 
 APPLICATION USAGE
 
