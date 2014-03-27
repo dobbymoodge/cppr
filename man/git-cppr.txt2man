@@ -89,12 +89,11 @@ TERMINOLOGY
 
 APPLICATION USAGE
 
-git-cppr creates pull requests against a base fork by cherry-picking changes into unique topic branches in the head fork.
+git-cppr creates pull requests against a base fork by cherry-picking changes into unique topic branches in the head fork. git-cppr makes the following assumptions:
 
-
-Assumes head fork is available as a remote repository
-Assumes base fork is either a remote repository or is specified like "owner:repo"
-Assumes each --target-branch matches a branch on base fork
+* the head fork is available as a remote repository
+* the specified base fork is either a remote repository or is specified like "owner:repo"
+* each --target-branch specified matches a branch on base fork
 
 EXIT STATUS
 
@@ -107,5 +106,6 @@ WARNINGS
   A recent version of hub is required - http://hub.github.com/
 
 SEE ALSO
-
+  git-pcp(1), git-ppr(1), hub(1)
 AUTHOR
+  John Lamb <jolamb@redhat.com> - man page written for OpenShift
