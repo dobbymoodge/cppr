@@ -4,8 +4,9 @@ NAME
 
 SYNOPSIS
 
-  git-cppr (-t | --target_branch <branch>)... -m | --my_remote <remote>
-    -o | --our_repo <remote/github repo> -p | --prefix <temp branch prefix> <commit/pull request URL(s)>...
+  git-cppr -o | --our_repo <remote/github repo> (-t | --target_branch <branch>)...
+     -m | --my_remote <remote>
+     -p | --prefix <temp branch prefix> <commit/pull request URL(s)>...
 
   git-cppr --continue | --skip | --abort
 
@@ -30,6 +31,11 @@ TERMINOLOGY
 
 OPTIONS
 
+  -o|--our_repo <remote/github repo>  
+    Tracked repository or github fork
+
+  Specifies base fork to create pull requests against
+
   -t|--target_branch <branch> ...  
     Branch(es) to create pull requests against.
 
@@ -40,11 +46,6 @@ OPTIONS
     Tracked repository to push topic branches to
 
   This will be used as the head fork for creating the pull requests
-
-  -o|--our_repo <remote/github repo>  
-    Tracked repository or github fork
-
-  Specifies base fork to create pull requests against
 
   -p|--prefix <prefix>  
     String to prepend to target branch names when creating topic branches
@@ -91,25 +92,28 @@ APPLICATION USAGE
 
 git-cppr creates pull requests against a base fork by cherry-picking changes into unique topic branches in the head fork. git-cppr makes the following assumptions:
 
-* the head fork is available as a remote repository
 * the specified base fork is either a remote repository or is specified like "owner:repo"
-* each --target-branch specified matches a branch on base fork
+* each --target-branch specified matches a branch on the base fork
+* the head fork is available as a remote repository
 
-Suppose you're doing development on a project which is a fork of an upstream project; both forks are managed via github. Development upstream all takes place in one branch, but your project's fork maintains 2 stable branches and one development branch. The development branch more-or-less tracks the current state of the upstream code base, but the stable branches are "snapshots" of the code base, frozen at distinct points in time. You do all your development against a personal fork of your project, and submit all changes to your project in the form of pull requests.
 
-Upstream has just merged a Pull Request that fixes a security flaw. A quick scan of your branches reveals that this bug exists in all three of your branches.
 
-You can cherry-pick the commits from the upstream pull request into a new pull request against your fork using git-cppr and the following information:
+EXAMPLES
 
-* The upstream pull request URL - https://github.com/upstream/repo/pull/12
-* The branches in your project which need to receive the bug fixed code:
-  * master (development branch)
-  * release-1
-  * release-2
+A set of changes has been introduced as a pull request to an upstream fork "their-foo" of a project called "our-foo" you're working on. You need to apply the commits from that pull request to two branches in your project's fork. Typically this would involve the following steps for each branch:
+* Update/add the upstream fork remote "their-foo":
+  git fetch their-foo
+* switch to the target branch (or create a new topic branch)
+  git checkout -b topic-branch our-foo/target-branch
+* cherry-pick the commits into the topic branch in your local repo
+  git cherry-pick their-foo-COMMIT1 their-foo-COMMIT2 ...
+* push the updated branch to your development fork (my-foo)
+  git push my-foo topic-branch:topic-branch
+* create a pull request against the project fork (our-foo) via github.com or the hub(1) command:
+  git pull-request -b our-foo:target-branch -h my-foo:topic-branch
+
 
 EXIT STATUS
-
-EXAMPLE
 
 WARNINGS
 
