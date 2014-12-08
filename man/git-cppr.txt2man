@@ -92,7 +92,7 @@ APPLICATION USAGE
 
 git-cppr creates pull requests against a base fork by cherry-picking changes into unique topic branches in the head fork. git-cppr makes the following assumptions:
 
-* the specified base fork is either a remote repository or is specified like "owner:repo"
+* the specified base fork is either a remote repository (i.e. listed in output of git-remote(1)) or is specified like "owner:repo"
 * each --target-branch specified matches a branch on the base fork
 * the head fork is available as a remote repository
 
@@ -101,16 +101,28 @@ git-cppr creates pull requests against a base fork by cherry-picking changes int
 EXAMPLES
 
 A set of changes has been introduced as a pull request to an upstream fork "their-foo" of a project called "our-foo" you're working on. You need to apply the commits from that pull request to two branches in your project's fork. Typically this would involve the following steps for each branch:
+
 * Update/add the upstream fork remote "their-foo":
+
   git fetch their-foo
+
 * switch to the target branch (or create a new topic branch)
-  git checkout -b topic-branch our-foo/target-branch
+
+  git checkout -b topic-branch our-foo/baz
+
 * cherry-pick the commits into the topic branch in your local repo
+
   git cherry-pick their-foo-COMMIT1 their-foo-COMMIT2 ...
+
 * push the updated branch to your development fork (my-foo)
+
   git push my-foo topic-branch:topic-branch
+
 * create a pull request against the project fork (our-foo) via github.com or the hub(1) command:
-  git pull-request -b our-foo:target-branch -h my-foo:topic-branch
+
+  git pull-request -b our-foo:baz -h my-foo:topic-branch
+
+git cppr --our_repo our-foo --target-branch baz --my-remote my-foo --prefix quux their-foo-COMMIT1 their-foo-COMMIT2 ...
 
 
 EXIT STATUS
